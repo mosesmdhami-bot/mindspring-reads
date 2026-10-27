@@ -1,0 +1,184 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Publish Your Work | MindSpring Reads</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .upload-panel {
+      max-width: 720px;
+      margin: 35px auto;
+      padding: 28px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.08);
+    }
+    .upload-panel label {
+      display: block;
+      margin: 18px 0 7px;
+      font-weight: 600;
+    }
+    .upload-panel input,
+    .upload-panel select,
+    .upload-panel textarea {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      border: 1px solid #d5d9d6;
+      border-radius: 8px;
+      font: inherit;
+      background: #fff;
+    }
+    .upload-panel input[type="file"] {
+      background: #f7f9f7;
+    }
+    .upload-panel button {
+      margin-top: 22px;
+      width: 100%;
+      cursor: pointer;
+    }
+    #uploadMessage {
+      margin-top: 16px;
+      overflow-wrap: anywhere;
+    }
+    .upload-help {
+      color: #555;
+      font-size: .92rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="navbar">
+    <a href="/" class="brand">
+      <span class="brand-icon">M</span>
+      MindSpring <span class="brand-light">Reads</span>
+    </a>
+    <a href="/" class="button button-outline">Back to library</a>
+  </header>
+
+  <main class="section">
+    <div class="upload-panel">
+      <div class="eyebrow">FOR AUTHORS & EDUCATORS</div>
+      <h1>Share your work. <em>Inspire readers.</em></h1>
+
+      <p>
+        Upload your original book, educational material or writing.
+        Our administrator will review it before it appears in the library.
+      </p>
+
+      <p class="upload-help">
+        Sign in to your MindSpring Reads account first. Currently accepted
+        manuscript formats are TXT and Markdown (.md), up to 5 MB.
+      </p>
+
+      <form id="authorUploadForm" enctype="multipart/form-data">
+        <label for="authorName">Your full name</label>
+        <input id="authorName" name="authorName"
+               type="text" minlength="2" maxlength="80" required>
+
+        <label for="email">Email address</label>
+        <input id="email" name="email"
+               type="email" maxlength="180" required>
+
+        <label for="title">Book or material title</label>
+        <input id="title" name="title"
+               type="text" minlength="2" maxlength="180" required>
+
+        <label for="category">Category</label>
+        <select id="category" name="category" required>
+          <option value="Self-help">Self-help</option>
+          <option value="Finance">Finance</option>
+          <option value="Fiction">Fiction</option>
+          <option value="Spiritual">Spiritual</option>
+          <option value="Academic">Academic</option>
+          <option value="Educational">Educational</option>
+          <option value="Other">Other</option>
+        </select>
+
+        <label for="description">Short description</label>
+        <textarea id="description" name="description"
+                  rows="4" minlength="10" maxlength="2000"
+                  placeholder="Explain what readers will learn or enjoy."
+                  required></textarea>
+
+        <label for="manuscript">Upload your manuscript</label>
+        <input id="manuscript" name="manuscript"
+               type="file" accept=".txt,.md,text/plain,text/markdown"
+               required>
+
+        <p class="upload-help">
+          Select the actual manuscript file from your computer.
+          PDF, Word documents and image files are not accepted by this
+          current upload endpoint.
+        </p>
+
+        <button class="button button-dark" type="submit" id="submitButton">
+          Upload for review
+        </button>
+
+        <p id="uploadMessage" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById("authorUploadForm");
+    const message = document.getElementById("uploadMessage");
+    const submitButton = document.getElementById("submitButton");
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const file = document.getElementById("manuscript").files[0];
+
+      if (!file) {
+        message.textContent = "Please select a manuscript file.";
+        return;
+      }
+
+      if (!/\.(txt|md)$/i.test(file.name)) {
+        message.textContent =
+          "Please choose a .txt or .md manuscript file.";
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        message.textContent =
+          "Your file is too large. The maximum size is 5 MB.";
+        return;
+      }
+
+      submitButton.disabled = true;
+      message.textContent = "Uploading your manuscript...";
+
+      try {
+        const response = await fetch("/api/authors/submissions", {
+          method: "POST",
+          body: new FormData(form),
+          credentials: "same-origin"
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error ||
+            "Upload failed. Please check your details.");
+        }
+
+        message.textContent =
+          result.message || "Your manuscript was submitted for review.";
+
+        form.reset();
+      } catch (error) {
+        message.textContent = error.message ||
+          "Could not upload. Check your connection and sign-in status.";
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

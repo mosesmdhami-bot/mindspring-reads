@@ -1,0 +1,215 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MindSpring Reads</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/script.js" defer></script>
+</head>
+<body>
+
+<header class="header">
+    <a href="/" class="logo">MindSpring <span>Reads</span></a>
+
+    <nav class="nav-links">
+        <a href="#home">Home</a>
+        <a href="#books">Books</a>
+        <a href="#categories">Categories</a>
+        <a href="#authors">Authors</a>
+    </nav>
+
+    <div class="nav-actions">
+        <button id="loginBtn" type="button">Login</button>
+        <button id="registerBtn" type="button">Register</button>
+        <button id="logoutBtn" type="button" hidden>Logout</button>
+    </div>
+</header>
+
+<main>
+    <section class="hero" id="home">
+        <div class="hero-content">
+            <h1>Discover Knowledge.<br>Grow Your Mind.</h1>
+            <p>
+                Explore books about personal development, finance,
+                fiction, spirituality, technology and education.
+            </p>
+            <a href="#books" class="btn">Explore Books</a>
+        </div>
+    </section>
+
+    <section class="section" id="categories">
+        <h2>Explore Categories</h2>
+        <div class="category-grid">
+            <button class="category-card" data-category="Self-help">Self-help</button>
+            <button class="category-card" data-category="Finance">Finance</button>
+            <button class="category-card" data-category="Fiction">Fiction</button>
+            <button class="category-card" data-category="Spirituality">Spirituality</button>
+            <button class="category-card" data-category="Academic">Academic</button>
+            <button class="category-card" data-category="Technology">Technology</button>
+        </div>
+    </section>
+
+    <section class="section" id="books">
+        <h2>Available Books</h2>
+        <p>Register or log in to start reading.</p>
+        <div id="booksContainer" class="books-grid">
+            <p>Loading books...</p>
+        </div>
+    </section>
+
+    <section class="section" id="access">
+        <h2>Reader Access</h2>
+        <p>Your first two eligible books are free. After that, reader access costs KSh 100 for one year.</p>
+        <button id="paymentBtn" class="btn" type="button">Request Reader Access</button>
+    </section>
+
+    <section class="section" id="authors">
+        <h2>Are You an Author?</h2>
+        <p>Submit your manuscript for review by the MindSpring Reads team.</p>
+        <button id="authorBtn" class="btn" type="button">Submit a Book</button>
+    </section>
+</main>
+
+<footer>
+    <p>&copy; <span id="currentYear"></span> MindSpring Reads. All rights reserved.</p>
+    <p>Contact: mosesmdhami@gmail.com</p>
+</footer>
+
+<!-- LOGIN MODAL -->
+<div class="modal" id="loginModal">
+    <div class="modal-content">
+        <button class="close-modal" type="button" data-close="loginModal">&times;</button>
+        <h2>Welcome Back</h2>
+
+        <form id="loginForm">
+            <label for="loginEmail">Email address</label>
+            <input id="loginEmail" name="email" type="email" required>
+
+            <label for="loginPassword">Password</label>
+            <input id="loginPassword" name="password" type="password" required>
+
+            <button type="submit" class="btn">Login</button>
+            <p id="loginMessage" role="status"></p>
+        </form>
+
+        <p>Don't have an account?
+            <button id="switchToRegister" type="button">Register</button>
+        </p>
+    </div>
+</div>
+
+<!-- REGISTER MODAL -->
+<div class="modal" id="registerModal">
+    <div class="modal-content">
+        <button class="close-modal" type="button" data-close="registerModal">&times;</button>
+        <h2>Create Your Account</h2>
+
+        <form id="registerForm">
+            <label for="registerName">Full name</label>
+            <input id="registerName" name="name" type="text" required>
+
+            <label for="registerEmail">Email address</label>
+            <input id="registerEmail" name="email" type="email" required>
+
+            <label for="registerPassword">Password</label>
+            <input id="registerPassword" name="password" type="password" minlength="8" required>
+
+            <button type="submit" class="btn">Create Account</button>
+            <p id="registerMessage" role="status"></p>
+        </form>
+
+        <p>Already registered?
+            <button id="switchToLogin" type="button">Login</button>
+        </p>
+    </div>
+</div>
+
+<!-- PAYMENT MODAL -->
+<div class="modal" id="paymentModal">
+    <div class="modal-content">
+        <button class="close-modal" type="button" data-close="paymentModal">&times;</button>
+        <h2>Request Reader Access</h2>
+
+        <p>Pay KSh 100 to M-Pesa number <strong>0792470754</strong>.</p>
+        <p>Enter the M-Pesa transaction code below. Your access will be activated after admin verification.</p>
+
+        <form id="paymentForm">
+            <label for="payerName">Your full name</label>
+            <input id="payerName" name="payerName" type="text" required>
+
+            <label for="payerEmail">Your email</label>
+            <input id="payerEmail" name="payerEmail" type="email" required>
+
+            <label for="transactionCode">M-Pesa transaction code</label>
+            <input id="transactionCode" name="transactionCode" type="text" required>
+
+            <button type="submit" class="btn">Submit Payment Details</button>
+            <p id="paymentMessage" role="status"></p>
+        </form>
+    </div>
+</div>
+
+<!-- AUTHOR SUBMISSION MODAL -->
+<div class="modal" id="authorModal">
+    <div class="modal-content">
+        <button class="close-modal" type="button" data-close="authorModal">&times;</button>
+        <h2>Submit Your Book</h2>
+
+        <form id="authorForm">
+            <label for="authorName">Author name</label>
+            <input id="authorName" name="authorName" type="text" required>
+
+            <label for="authorEmail">Email address</label>
+            <input id="authorEmail" name="email" type="email" required>
+
+            <label for="bookTitle">Book title</label>
+            <input id="bookTitle" name="title" type="text" required>
+
+            <label for="bookCategory">Category</label>
+            <select id="bookCategory" name="category" required>
+                <option value="">Choose a category</option>
+                <option value="Self-help">Self-help</option>
+                <option value="Finance">Finance</option>
+                <option value="Spirituality">Spirituality</option>
+                <option value="Academic">Academic</option>
+                <option value="Technology">Technology</option>
+                <option value="Other">Other</option>
+            </select>
+
+            <label for="bookDescription">Book description</label>
+            <textarea id="bookDescription" name="description" rows="4" required></textarea>
+
+            <label for="manuscript">Manuscript file</label>
+            <input id="manuscript" name="manuscript" type="file"
+                   accept=".pdf,.doc,.docx,.txt" required>
+
+            <button type="submit" class="btn">Submit for Review</button>
+            <p id="authorMessage" role="status"></p>
+        </form>
+    </div>
+</div>
+
+<!-- READER MODAL -->
+<div class="modal" id="readerModal">
+    <div class="modal-content reader-content">
+        <button class="close-modal" type="button" data-close="readerModal">&times;</button>
+        <h2 id="readerTitle">Book</h2>
+        <p id="readerMessage" role="status"></p>
+        <div id="readerContent"></div>
+    </div>
+</div>
+
+<!-- GENERAL MESSAGE MODAL -->
+<div class="modal" id="messageModal">
+    <div class="modal-content">
+        <button class="close-modal" type="button" data-close="messageModal">&times;</button>
+        <h2 id="messageTitle">MindSpring Reads</h2>
+        <p id="messageText"></p>
+        <button class="btn" type="button" data-close="messageModal">OK</button>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,1 @@
+Copy your existing index.html, style.css, and script.js into this folder. See the root README.md for exact setup instructions. Then add <script src="/production.js"></script> after the existing script.js include in index.html.
