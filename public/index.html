@@ -4,168 +4,703 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MindSpring Reads</title>
+
+    <meta name="description" content="Discover and read books on personal development, finance, fiction, spirituality, technology and education with MindSpring Reads.">
+    <meta name="theme-color" content="#123c32">
+
+    <title>MindSpring Reads | Discover Knowledge</title>
+
     <link rel="stylesheet" href="/style.css">
+
+    <!-- Reader layout corrections -->
+    <style>
+        /* Ensure hidden modals stay hidden even if other CSS conflicts. */
+        .modal[hidden] {
+            display: none !important;
+        }
+
+        /* Reader modal: centered, scrollable and responsive. */
+        #readerModal {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-y: auto;
+            box-sizing: border-box;
+            background: rgba(12, 25, 20, 0.78);
+        }
+
+        #readerModal[hidden] {
+            display: none !important;
+        }
+
+        #readerModal > .modal-content.reader-content {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            width: min(100%, 1000px);
+            max-width: 1000px;
+            height: auto;
+            max-height: calc(100vh - 40px);
+            min-height: 0;
+            margin: auto;
+            padding: 0;
+            overflow: hidden;
+            box-sizing: border-box;
+            background: #fffdf8;
+            color: #26352c;
+            border-radius: 16px;
+            box-shadow: 0 20px 70px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Book heading stays separate from the reading text. */
+        #readerModal .reader-header {
+            position: relative;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 20px;
+            flex: 0 0 auto;
+            padding: 26px 32px 20px;
+            border-bottom: 1px solid #e4e6dc;
+            background: #edf0e7;
+            box-sizing: border-box;
+        }
+
+        #readerModal .reader-heading {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        #readerModal .reader-brand {
+            margin: 0 0 10px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            overflow-wrap: anywhere;
+        }
+
+        #readerModal #readerTitle {
+            margin: 0;
+            max-width: 100%;
+            font-size: clamp(22px, 3vw, 34px);
+            line-height: 1.3;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+
+        #readerModal #readerMessage {
+            margin: 8px 0 0;
+            overflow-wrap: anywhere;
+        }
+
+        #readerModal .reader-header .close-modal {
+            position: relative;
+            inset: auto;
+            flex: 0 0 auto;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            font-size: 28px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        /* Toolbar wraps rather than overlapping on narrow screens. */
+        #readerModal .reader-toolbar {
+            position: relative;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            flex: 0 0 auto;
+            padding: 14px 24px;
+            border-bottom: 1px solid #e4e6dc;
+            background: #ffffff;
+            box-sizing: border-box;
+        }
+
+        #readerModal .reader-font-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        #readerModal .reader-toolbar button {
+            flex: 0 0 auto;
+            min-height: 36px;
+            cursor: pointer;
+        }
+
+        #readerModal .reader-search {
+            flex: 1 1 180px;
+            min-width: 0;
+        }
+
+        #readerModal .reader-search input {
+            display: block;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+
+        #readerModal .reader-progress-area {
+            flex: 0 0 auto;
+            padding: 12px 32px 4px;
+            background: #fffdf8;
+            box-sizing: border-box;
+        }
+
+        #readerModal .reader-progress-track {
+            width: 100%;
+            height: 6px;
+            overflow: hidden;
+            border-radius: 10px;
+            background: #e5e8df;
+        }
+
+        #readerModal #readerProgressBar {
+            width: 0;
+            height: 100%;
+            background: #365b45;
+            transition: width 0.2s ease;
+        }
+
+        #readerModal #readerProgressText {
+            margin: 8px 0 0;
+            font-size: 12px;
+            color: #687368;
+        }
+
+        #readerModal #readerSearchMessage {
+            flex: 0 0 auto;
+            margin: 0;
+            padding: 0 32px;
+            overflow-wrap: anywhere;
+        }
+
+        /*
+         * Critical fix:
+         * The manuscript is normal document text, not a positioned overlay.
+         * Its height is determined by the text and it scrolls inside the reader.
+         */
+        #readerModal article#readerContent.reader-paper {
+            position: relative;
+            display: block;
+            flex: 1 1 auto;
+            width: auto;
+            max-width: none;
+            height: auto;
+            min-height: 180px;
+            max-height: none;
+            min-width: 0;
+            margin: 0;
+            padding: 28px 40px 36px;
+            overflow-x: hidden;
+            overflow-y: auto;
+            box-sizing: border-box;
+            float: none;
+            clear: both;
+            transform: none;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: normal;
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 17px;
+            line-height: 1.9;
+            color: #303b32;
+            background: #fffdf8;
+            text-align: left;
+            scroll-behavior: smooth;
+            overscroll-behavior: contain;
+        }
+
+        /* Keep long lines, URLs and unbroken text inside the page. */
+        #readerModal article#readerContent *,
+        #readerModal article#readerContent {
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        #readerModal article#readerContent img,
+        #readerModal article#readerContent video,
+        #readerModal article#readerContent table {
+            max-width: 100%;
+        }
+
+        #readerModal .reader-footer {
+            position: relative;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex: 0 0 auto;
+            padding: 14px 28px;
+            border-top: 1px solid #e4e6dc;
+            background: #ffffff;
+            box-sizing: border-box;
+        }
+
+        #readerModal .reader-footer span {
+            overflow-wrap: anywhere;
+        }
+
+        #readerModal #readerTopBtn {
+            flex: 0 0 auto;
+            cursor: pointer;
+        }
+
+        /* Reader dark mode. */
+        #readerModal.reader-dark > .modal-content.reader-content,
+        #readerModal.reader-dark article#readerContent.reader-paper {
+            background: #202923;
+            color: #e9eee8;
+        }
+
+        #readerModal.reader-dark .reader-header,
+        #readerModal.reader-dark .reader-toolbar,
+        #readerModal.reader-dark .reader-footer,
+        #readerModal.reader-dark .reader-progress-area {
+            background: #29352d;
+            color: #e9eee8;
+            border-color: #435046;
+        }
+
+        #readerModal.reader-dark #readerTitle,
+        #readerModal.reader-dark .reader-brand {
+            color: #e9eee8;
+        }
+
+        #readerModal.reader-dark #readerProgressText {
+            color: #c4d0c5;
+        }
+
+        #readerModal.reader-dark .reader-progress-track {
+            background: #48554b;
+        }
+
+        /* Screen-reader-only labels. */
+        .sr-only {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important;
+            border: 0 !important;
+        }
+
+        /* Mobile layout. */
+        @media (max-width: 600px) {
+            #readerModal {
+                padding: 6px;
+                align-items: stretch;
+            }
+
+            #readerModal > .modal-content.reader-content {
+                width: 100%;
+                max-width: 100%;
+                max-height: calc(100dvh - 12px);
+                border-radius: 10px;
+            }
+
+            #readerModal .reader-header {
+                gap: 10px;
+                padding: 18px 16px;
+            }
+
+            #readerModal #readerTitle {
+                font-size: 23px;
+            }
+
+            #readerModal .reader-toolbar {
+                gap: 8px;
+                padding: 12px;
+            }
+
+            #readerModal .reader-search {
+                flex-basis: 100%;
+                order: 3;
+            }
+
+            #readerModal #readerSearchBtn,
+            #readerModal #readerClearSearch {
+                order: 4;
+            }
+
+            #readerModal .reader-progress-area {
+                padding: 10px 16px 4px;
+            }
+
+            #readerModal #readerSearchMessage {
+                padding: 0 16px;
+            }
+
+            #readerModal article#readerContent.reader-paper {
+                min-height: 140px;
+                padding: 20px 17px 28px;
+                font-size: 16px;
+                line-height: 1.8;
+            }
+
+            #readerModal .reader-footer {
+                padding: 12px 16px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #readerModal article#readerContent.reader-paper {
+                scroll-behavior: auto;
+            }
+
+            #readerModal #readerProgressBar {
+                transition: none;
+            }
+        }
+    </style>
+
     <script src="/script.js" defer></script>
 </head>
+
 <body>
 
-<header class="header">
-    <a href="/" class="logo">MindSpring <span>Reads</span></a>
+<a class="skip-link" href="#mainContent">Skip to content</a>
 
-    <nav class="nav-links">
+<header class="header" id="siteHeader">
+    <a href="#home" class="logo" aria-label="MindSpring Reads home">
+        MindSpring <span>Reads</span>
+    </a>
+
+    <button
+        class="mobile-menu-toggle"
+        id="mobileMenuBtn"
+        type="button"
+        aria-label="Toggle navigation"
+        aria-expanded="false"
+        aria-controls="primaryNavigation"
+    >☰</button>
+
+    <nav class="nav-links" id="primaryNavigation" aria-label="Main navigation">
         <a href="#home">Home</a>
         <a href="#books">Books</a>
         <a href="#categories">Categories</a>
+        <a href="#access">Reader Access</a>
         <a href="#authors">Authors</a>
     </nav>
 
     <div class="nav-actions">
+        <span id="currentUserDisplay" aria-live="polite"></span>
         <button id="loginBtn" type="button">Login</button>
         <button id="registerBtn" type="button">Register</button>
         <button id="logoutBtn" type="button" hidden>Logout</button>
     </div>
 </header>
 
-<main>
+<main id="mainContent">
+
     <section class="hero" id="home">
         <div class="hero-content">
-            <h1>Discover Knowledge.<br>Grow Your Mind.</h1>
+            <p class="hero-eyebrow">YOUR NEXT CHAPTER STARTS HERE</p>
+
+            <h1>
+                Discover Knowledge.<br>
+                <span>Grow Your Mind.</span>
+            </h1>
+
             <p>
-                Explore books about personal development, finance,
-                fiction, spirituality, technology and education.
+                Explore books that inspire personal growth, improve financial
+                knowledge, strengthen understanding and spark imagination.
             </p>
-            <a href="#books" class="btn">Explore Books</a>
+
+            <div class="hero-actions">
+                <a href="#books" class="btn">Explore Books</a>
+                <a href="#categories" class="btn btn-secondary">Browse Categories</a>
+            </div>
+
+            <p class="hero-note">Read. Learn. Grow. One book at a time.</p>
         </div>
     </section>
 
     <section class="section" id="categories">
-        <h2>Explore Categories</h2>
+        <div class="section-heading">
+            <p class="section-eyebrow">FIND YOUR INTEREST</p>
+            <h2>Explore Categories</h2>
+            <p>Discover books that match your interests and goals.</p>
+        </div>
+
         <div class="category-grid">
-            <button class="category-card" data-category="Self-help">Self-help</button>
-            <button class="category-card" data-category="Finance">Finance</button>
-            <button class="category-card" data-category="Fiction">Fiction</button>
-            <button class="category-card" data-category="Spirituality">Spirituality</button>
-            <button class="category-card" data-category="Academic">Academic</button>
-            <button class="category-card" data-category="Technology">Technology</button>
+            <button class="category-card" type="button" data-category="Self-help">
+                <span class="category-icon" aria-hidden="true">🌱</span>
+                <span>Self-help</span>
+            </button>
+
+            <button class="category-card" type="button" data-category="Finance">
+                <span class="category-icon" aria-hidden="true">💰</span>
+                <span>Finance</span>
+            </button>
+
+            <button class="category-card" type="button" data-category="Fiction">
+                <span class="category-icon" aria-hidden="true">📚</span>
+                <span>Fiction</span>
+            </button>
+
+            <button class="category-card" type="button" data-category="Spirituality">
+                <span class="category-icon" aria-hidden="true">✨</span>
+                <span>Spirituality</span>
+            </button>
+
+            <button class="category-card" type="button" data-category="Academic">
+                <span class="category-icon" aria-hidden="true">🎓</span>
+                <span>Academic</span>
+            </button>
+
+            <button class="category-card" type="button" data-category="Technology">
+                <span class="category-icon" aria-hidden="true">💻</span>
+                <span>Technology</span>
+            </button>
         </div>
     </section>
 
-    <section class="section" id="books">
-        <h2>Available Books</h2>
-        <p>Register or log in to start reading.</p>
-        <div id="booksContainer" class="books-grid">
+    <section class="section books-section" id="books">
+        <div class="section-heading">
+            <p class="section-eyebrow">THE DIGITAL LIBRARY</p>
+            <h2>Discover Your Next Read</h2>
+            <p>Explore available titles and find your next source of inspiration.</p>
+        </div>
+
+        <div class="book-search-area">
+            <label for="bookSearch">Search the library</label>
+
+            <div class="book-search-controls">
+                <input
+                    id="bookSearch"
+                    type="search"
+                    placeholder="Search by title or author..."
+                    autocomplete="off"
+                >
+
+                <button id="bookSearchBtn" class="btn" type="button">Search</button>
+                <button id="clearBookSearchBtn" type="button">Clear</button>
+            </div>
+
+            <label for="bookCategoryFilter">Filter by category</label>
+
+            <select id="bookCategoryFilter">
+                <option value="">All categories</option>
+                <option value="Self-help">Self-help</option>
+                <option value="Finance">Finance</option>
+                <option value="Fiction">Fiction</option>
+                <option value="Spirituality">Spirituality</option>
+                <option value="Academic">Academic</option>
+                <option value="Technology">Technology</option>
+                <option value="Other">Other</option>
+            </select>
+
+            <p id="bookSearchMessage" role="status" aria-live="polite"></p>
+        </div>
+
+        <div id="booksContainer" class="books-grid" aria-live="polite">
             <p>Loading books...</p>
         </div>
     </section>
 
-    <section class="section" id="access">
-        <h2>Reader Access</h2>
-        <p>Your first two eligible books are free. After that, reader access costs KSh 100 for one year.</p>
-        <button id="paymentBtn" class="btn" type="button">Request Reader Access</button>
+    <section class="section access-section" id="access">
+        <div class="access-content">
+            <p class="section-eyebrow">AFFORDABLE READING</p>
+            <h2>Knowledge Within Reach</h2>
+
+            <p>
+                Start with your first two eligible books for free.
+                When you need more, get one year of reader access for
+                <strong>KSh 100</strong>.
+            </p>
+
+            <ul class="access-benefits">
+                <li>Explore the digital library</li>
+                <li>Enjoy your two eligible free books</li>
+                <li>Request affordable yearly access</li>
+                <li>Submit payment details for administrator verification</li>
+            </ul>
+
+            <button id="paymentBtn" class="btn" type="button">
+                Request Reader Access
+            </button>
+
+            <p id="readerAccessStatus" role="status" aria-live="polite"></p>
+        </div>
     </section>
 
-    <section class="section" id="authors">
-        <h2>Are You an Author?</h2>
-        <p>Submit your manuscript for review by the MindSpring Reads team.</p>
-        <button id="authorBtn" class="btn" type="button">Submit a Book</button>
+    <section class="section authors-section" id="authors">
+        <div class="section-heading">
+            <p class="section-eyebrow">SHARE YOUR KNOWLEDGE</p>
+            <h2>Are You an Author?</h2>
+
+            <p>
+                Share your work with readers. Submit your manuscript
+                for review by the MindSpring Reads team.
+            </p>
+
+            <button id="authorBtn" class="btn" type="button">Submit a Book</button>
+        </div>
     </section>
+
 </main>
 
-<footer>
-    <p>&copy; <span id="currentYear"></span> MindSpring Reads. All rights reserved.</p>
-    <p>Contact: mosesmdhami@gmail.com</p>
+<footer class="site-footer">
+    <div class="footer-content">
+        <a href="#home" class="logo">
+            MindSpring <span>Reads</span>
+        </a>
+
+        <p>Read. Learn. Grow.</p>
+
+        <p>
+            Contact:
+            <a href="mailto:mosesmdhami@gmail.com">mosesmdhami@gmail.com</a>
+        </p>
+
+        <p>
+            &copy; <span id="currentYear"></span>
+            MindSpring Reads. All rights reserved.
+        </p>
+    </div>
 </footer>
 
 <!-- LOGIN MODAL -->
-<div class="modal" id="loginModal">
+<div class="modal" id="loginModal" role="dialog"
+     aria-modal="true" aria-labelledby="loginModalTitle" hidden>
     <div class="modal-content">
-        <button class="close-modal" type="button" data-close="loginModal">&times;</button>
-        <h2>Welcome Back</h2>
+        <button class="close-modal" type="button"
+                data-close="loginModal" aria-label="Close login">&times;</button>
+
+        <p class="section-eyebrow">WELCOME BACK</p>
+        <h2 id="loginModalTitle">Login to MindSpring Reads</h2>
 
         <form id="loginForm">
             <label for="loginEmail">Email address</label>
-            <input id="loginEmail" name="email" type="email" required>
+            <input id="loginEmail" name="email" type="email"
+                   autocomplete="email" required>
 
             <label for="loginPassword">Password</label>
-            <input id="loginPassword" name="password" type="password" required>
+            <input id="loginPassword" name="password" type="password"
+                   autocomplete="current-password" required>
 
             <button type="submit" class="btn">Login</button>
-            <p id="loginMessage" role="status"></p>
+            <p id="loginMessage" role="status" aria-live="polite"></p>
         </form>
 
-        <p>Don't have an account?
+        <p>
+            Don't have an account?
             <button id="switchToRegister" type="button">Register</button>
         </p>
     </div>
 </div>
 
 <!-- REGISTER MODAL -->
-<div class="modal" id="registerModal">
+<div class="modal" id="registerModal" role="dialog"
+     aria-modal="true" aria-labelledby="registerModalTitle" hidden>
     <div class="modal-content">
-        <button class="close-modal" type="button" data-close="registerModal">&times;</button>
-        <h2>Create Your Account</h2>
+        <button class="close-modal" type="button"
+                data-close="registerModal" aria-label="Close registration">&times;</button>
+
+        <p class="section-eyebrow">JOIN OUR COMMUNITY</p>
+        <h2 id="registerModalTitle">Create Your Account</h2>
 
         <form id="registerForm">
             <label for="registerName">Full name</label>
-            <input id="registerName" name="name" type="text" required>
+            <input id="registerName" name="name" type="text"
+                   autocomplete="name" minlength="2" maxlength="80" required>
 
             <label for="registerEmail">Email address</label>
-            <input id="registerEmail" name="email" type="email" required>
+            <input id="registerEmail" name="email" type="email"
+                   autocomplete="email" required>
 
             <label for="registerPassword">Password</label>
-            <input id="registerPassword" name="password" type="password" minlength="8" required>
+            <input id="registerPassword" name="password" type="password"
+                   autocomplete="new-password" minlength="10"
+                   aria-describedby="passwordHelp" required>
+
+            <p id="passwordHelp" class="form-help">Use at least 10 characters.</p>
 
             <button type="submit" class="btn">Create Account</button>
-            <p id="registerMessage" role="status"></p>
+            <p id="registerMessage" role="status" aria-live="polite"></p>
         </form>
 
-        <p>Already registered?
+        <p>
+            Already registered?
             <button id="switchToLogin" type="button">Login</button>
         </p>
     </div>
 </div>
 
 <!-- PAYMENT MODAL -->
-<div class="modal" id="paymentModal">
+<div class="modal" id="paymentModal" role="dialog"
+     aria-modal="true" aria-labelledby="paymentModalTitle" hidden>
     <div class="modal-content">
-        <button class="close-modal" type="button" data-close="paymentModal">&times;</button>
-        <h2>Request Reader Access</h2>
+        <button class="close-modal" type="button"
+                data-close="paymentModal" aria-label="Close payment form">&times;</button>
 
-        <p>Pay KSh 100 to M-Pesa number <strong>0792470754</strong>.</p>
-        <p>Enter the M-Pesa transaction code below. Your access will be activated after admin verification.</p>
+        <p class="section-eyebrow">YEARLY READER ACCESS</p>
+        <h2 id="paymentModalTitle">Request Reader Access</h2>
+
+        <p>
+            Pay <strong>KSh 100</strong> to the official M-Pesa
+            payment number displayed by MindSpring Reads.
+        </p>
+
+        <p>
+            After payment, submit your transaction code.
+            Access is activated only after administrator verification.
+        </p>
 
         <form id="paymentForm">
             <label for="payerName">Your full name</label>
-            <input id="payerName" name="payerName" type="text" required>
+            <input id="payerName" name="payerName" type="text"
+                   autocomplete="name" required>
 
             <label for="payerEmail">Your email</label>
-            <input id="payerEmail" name="payerEmail" type="email" required>
+            <input id="payerEmail" name="payerEmail" type="email"
+                   autocomplete="email" required>
 
             <label for="transactionCode">M-Pesa transaction code</label>
-            <input id="transactionCode" name="transactionCode" type="text" required>
+            <input id="transactionCode" name="transactionCode"
+                   type="text" maxlength="20" autocomplete="off"
+                   autocapitalize="characters" required>
 
             <button type="submit" class="btn">Submit Payment Details</button>
-            <p id="paymentMessage" role="status"></p>
+            <p id="paymentMessage" role="status" aria-live="polite"></p>
         </form>
     </div>
 </div>
 
 <!-- AUTHOR SUBMISSION MODAL -->
-<div class="modal" id="authorModal">
+<div class="modal" id="authorModal" role="dialog"
+     aria-modal="true" aria-labelledby="authorModalTitle" hidden>
     <div class="modal-content">
-        <button class="close-modal" type="button" data-close="authorModal">&times;</button>
-        <h2>Submit Your Book</h2>
+        <button class="close-modal" type="button"
+                data-close="authorModal" aria-label="Close author form">&times;</button>
+
+        <p class="section-eyebrow">PUBLISH WITH US</p>
+        <h2 id="authorModalTitle">Submit Your Book</h2>
 
         <form id="authorForm">
             <label for="authorName">Author name</label>
-            <input id="authorName" name="authorName" type="text" required>
+            <input id="authorName" name="authorName" type="text"
+                   minlength="2" maxlength="100" required>
 
             <label for="authorEmail">Email address</label>
-            <input id="authorEmail" name="email" type="email" required>
+            <input id="authorEmail" name="email" type="email"
+                   autocomplete="email" required>
 
             <label for="bookTitle">Book title</label>
-            <input id="bookTitle" name="title" type="text" required>
+            <input id="bookTitle" name="title" type="text"
+                   maxlength="180" required>
 
             <label for="bookCategory">Category</label>
             <select id="bookCategory" name="category" required>
@@ -179,37 +714,281 @@
             </select>
 
             <label for="bookDescription">Book description</label>
-            <textarea id="bookDescription" name="description" rows="4" required></textarea>
+            <textarea id="bookDescription" name="description"
+                      rows="4" minlength="10" maxlength="2000"
+                      required></textarea>
 
             <label for="manuscript">Manuscript file</label>
             <input id="manuscript" name="manuscript" type="file"
-                   accept=".pdf,.doc,.docx,.txt" required>
+                   accept=".pdf,.doc,.docx,.txt,.md,.csv,.rtf,.odt,.epub,.ppt,.pptx,.xls,.xlsx,.ods,.odp"
+                   required>
+
+            <p class="form-help">
+                Maximum file size: 20 MB. The server determines which
+                formats can be uploaded and processed.
+            </p>
 
             <button type="submit" class="btn">Submit for Review</button>
-            <p id="authorMessage" role="status"></p>
+            <p id="authorMessage" role="status" aria-live="polite"></p>
         </form>
     </div>
 </div>
 
-<!-- READER MODAL -->
-<div class="modal" id="readerModal">
+<!-- PROFESSIONAL READER MODAL -->
+<div class="modal reader-modal" id="readerModal" role="dialog"
+     aria-modal="true" aria-labelledby="readerTitle" hidden>
     <div class="modal-content reader-content">
-        <button class="close-modal" type="button" data-close="readerModal">&times;</button>
-        <h2 id="readerTitle">Book</h2>
-        <p id="readerMessage" role="status"></p>
-        <div id="readerContent"></div>
+
+        <div class="reader-header">
+            <div class="reader-heading">
+                <p class="reader-brand">MINDSPRING READS</p>
+                <h2 id="readerTitle">Book title</h2>
+                <p id="readerMessage" role="status" aria-live="polite"></p>
+            </div>
+
+            <button class="close-modal" type="button"
+                    data-close="readerModal" aria-label="Close reader">&times;</button>
+        </div>
+
+        <div class="reader-toolbar" role="toolbar" aria-label="Reading controls">
+            <div class="reader-font-controls">
+                <button id="readerDecreaseFont" type="button"
+                        aria-label="Decrease text size" title="Decrease text size">A−</button>
+
+                <button id="readerIncreaseFont" type="button"
+                        aria-label="Increase text size" title="Increase text size">A+</button>
+            </div>
+
+            <button id="readerThemeBtn" type="button" aria-pressed="false">
+                Dark mode
+            </button>
+
+            <div class="reader-search">
+                <label class="sr-only" for="readerSearchInput">
+                    Search within this book
+                </label>
+                <input id="readerSearchInput" type="search"
+                       placeholder="Find in this book..." autocomplete="off">
+            </div>
+
+            <button id="readerSearchBtn" type="button">Search</button>
+            <button id="readerClearSearch" type="button">Clear</button>
+        </div>
+
+        <div class="reader-progress-area">
+            <div class="reader-progress-track"
+                 role="progressbar" aria-label="Reading progress"
+                 aria-valuemin="0" aria-valuemax="100"
+                 aria-valuenow="0" id="readerProgressTrack">
+                <div id="readerProgressBar"></div>
+            </div>
+            <p id="readerProgressText">Reading progress: 0%</p>
+        </div>
+
+        <p id="readerSearchMessage" role="status" aria-live="polite"></p>
+
+        <article id="readerContent" class="reader-paper">
+            <p>Your selected book will appear here.</p>
+        </article>
+
+        <div class="reader-footer">
+            <span>Take your time. Keep learning.</span>
+            <button id="readerTopBtn" type="button">Back to top ↑</button>
+        </div>
+
     </div>
 </div>
 
 <!-- GENERAL MESSAGE MODAL -->
-<div class="modal" id="messageModal">
+<div class="modal" id="messageModal" role="dialog"
+     aria-modal="true" aria-labelledby="messageTitle" hidden>
     <div class="modal-content">
-        <button class="close-modal" type="button" data-close="messageModal">&times;</button>
+        <button class="close-modal" type="button"
+                data-close="messageModal" aria-label="Close message">&times;</button>
+
         <h2 id="messageTitle">MindSpring Reads</h2>
         <p id="messageText"></p>
+
         <button class="btn" type="button" data-close="messageModal">OK</button>
     </div>
 </div>
+
+<script>
+/*
+ * Reader controls are initialized independently of the main application.
+ * These handlers use the existing reader element IDs.
+ */
+(() => {
+    const reader = document.getElementById("readerModal");
+    const paper = document.getElementById("readerContent");
+
+    if (!reader || !paper) return;
+
+    let fontSize = 17;
+
+    const decreaseButton = document.getElementById("readerDecreaseFont");
+    const increaseButton = document.getElementById("readerIncreaseFont");
+    const themeButton = document.getElementById("readerThemeBtn");
+    const topButton = document.getElementById("readerTopBtn");
+    const searchInput = document.getElementById("readerSearchInput");
+    const searchButton = document.getElementById("readerSearchBtn");
+    const clearSearchButton = document.getElementById("readerClearSearch");
+    const searchMessage = document.getElementById("readerSearchMessage");
+    const progressBar = document.getElementById("readerProgressBar");
+    const progressTrack = document.getElementById("readerProgressTrack");
+    const progressText = document.getElementById("readerProgressText");
+
+    if (decreaseButton) {
+        decreaseButton.addEventListener("click", () => {
+            fontSize = Math.max(12, fontSize - 1);
+            paper.style.fontSize = `${fontSize}px`;
+        });
+    }
+
+    if (increaseButton) {
+        increaseButton.addEventListener("click", () => {
+            fontSize = Math.min(30, fontSize + 1);
+            paper.style.fontSize = `${fontSize}px`;
+        });
+    }
+
+    if (themeButton) {
+        themeButton.addEventListener("click", () => {
+            const dark = reader.classList.toggle("reader-dark");
+            themeButton.setAttribute("aria-pressed", String(dark));
+            themeButton.textContent = dark ? "Light mode" : "Dark mode";
+        });
+    }
+
+    if (topButton) {
+        topButton.addEventListener("click", () => {
+            paper.scrollTo({ top: 0, behavior: "smooth" });
+        });
+    }
+
+    function updateProgress() {
+        const scrollableHeight = paper.scrollHeight - paper.clientHeight;
+        const percent = scrollableHeight > 0
+            ? Math.round((paper.scrollTop / scrollableHeight) * 100)
+            : 100;
+
+        if (progressBar) progressBar.style.width = `${percent}%`;
+        if (progressTrack) progressTrack.setAttribute("aria-valuenow", String(percent));
+        if (progressText) progressText.textContent = `Reading progress: ${percent}%`;
+    }
+
+    paper.addEventListener("scroll", updateProgress);
+
+    /*
+     * Search is performed using text nodes so book content is not
+     * reinterpreted as HTML.
+     */
+    function searchBook() {
+        if (!searchInput || !searchMessage) return;
+
+        const query = searchInput.value.trim();
+
+        if (!query) {
+            searchMessage.textContent = "Enter a word or phrase to search.";
+            return;
+        }
+
+        const text = paper.textContent || "";
+        const position = text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
+
+        if (position === -1) {
+            searchMessage.textContent = "No matching text found.";
+            return;
+        }
+
+        /*
+         * Find the text in the rendered document without replacing
+         * manuscript content or creating unsafe HTML.
+         */
+        const walker = document.createTreeWalker(paper, NodeFilter.SHOW_TEXT);
+        let offset = 0;
+        let node;
+        let found = false;
+
+        while ((node = walker.nextNode())) {
+            const nodeText = node.nodeValue || "";
+            const localPosition = nodeText.toLocaleLowerCase()
+                .indexOf(query.toLocaleLowerCase());
+
+            if (localPosition !== -1) {
+                const range = document.createRange();
+                range.setStart(node, localPosition);
+                range.setEnd(node, localPosition + query.length);
+
+                const parent = node.parentElement;
+                if (parent) {
+                    parent.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+
+                found = true;
+                break;
+            }
+
+            offset += nodeText.length;
+        }
+
+        searchMessage.textContent = found
+            ? `Found "${query}". The matching text is selected.`
+            : "Matching text exists, but could not be positioned.";
+    }
+
+    if (searchButton) searchButton.addEventListener("click", searchBook);
+
+    if (searchInput) {
+        searchInput.addEventListener("keydown", event => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                searchBook();
+            }
+        });
+    }
+
+    if (clearSearchButton) {
+        clearSearchButton.addEventListener("click", () => {
+            if (searchInput) searchInput.value = "";
+            if (searchMessage) searchMessage.textContent = "";
+            const selection = window.getSelection();
+            if (selection) selection.removeAllRanges();
+        });
+    }
+
+    /*
+     * Recalculate progress whenever the modal opens or the book content
+     * changes. A MutationObserver also handles text inserted by script.js.
+     */
+    const observer = new MutationObserver(() => {
+        updateProgress();
+    });
+
+    observer.observe(paper, {
+        childList: true,
+        subtree: true,
+        characterData: true
+    });
+
+    const modalObserver = new MutationObserver(() => {
+        if (!reader.hidden) updateProgress();
+    });
+
+    modalObserver.observe(reader, {
+        attributes: true,
+        attributeFilter: ["hidden", "class"]
+    });
+
+    updateProgress();
+})();
+</script>
 
 </body>
 </html>

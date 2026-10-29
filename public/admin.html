@@ -1,1 +1,471 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MindSpring Reads | Admin</title><link rel="stylesheet" href="/style.css"><style>.admin-wrap{max-width:1100px;margin:auto;padding:35px 5%}.admin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}.admin-stat,.admin-panel{background:white;border:1px solid var(--line);border-radius:7px;padding:18px}.admin-stat strong{display:block;font:32px var(--serif);color:var(--green)}.admin-panel{margin:20px 0;overflow-x:auto}.admin-panel h2{font-size:25px;margin-bottom:16px}.admin-table{border-collapse:collapse;width:100%;font-size:12px;min-width:680px}.admin-table th,.admin-table td{padding:11px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}.admin-table th{color:var(--muted);font-weight:700}.admin-table button{margin:3px;padding:7px 10px;font-size:11px}.admin-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.admin-form .wide{grid-column:1/-1}.status{font-weight:700}.admin-msg{font-size:12px;color:#9b773a;white-space:pre-wrap}@media(max-width:650px){.admin-grid{grid-template-columns:repeat(2,1fr)}.admin-form{grid-template-columns:1fr}.admin-form .wide{grid-column:auto}}</style></head><body><header class="navbar"><a href="/" class="brand"><span class="brand-icon">M</span> MindSpring <span class="brand-light">Reads</span></a><nav><a href="/">Visit website</a></nav><button class="button button-dark" id="logout">Sign out</button></header><main class="admin-wrap"><div class="eyebrow">PRIVATE CONTROL PANEL</div><h1 style="font-size:43px">Admin <em>dashboard.</em></h1><p>Review M-Pesa submissions, approve author manuscripts and publish books. Approve a payment only after independently confirming it in your M-Pesa transaction records.</p><p id="message" class="admin-msg" role="status"></p><div class="admin-grid" id="summary"></div><section class="admin-panel"><h2>Publish a book</h2><form id="bookForm" class="admin-form"><div><label>Book title</label><input name="title" required minlength="2"></div><div><label>Author</label><input name="author" required minlength="2"></div><div><label>Category</label><select name="category"><option>Self-help</option><option>Finance</option><option>Spirituality</option><option>Academic</option><option>Technology</option><option>Other</option></select></div><div><label>Cover image (optional)</label><input name="cover" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"></div><div class="wide"><label>Short description</label><textarea name="description" required minlength="10" rows="2"></textarea></div><div class="wide"><label>Manuscript (.txt or .md, max 5 MB)</label><input name="manuscript" type="file" accept=".txt,.md,text/plain,text/markdown" required></div><div class="wide"><button class="button button-dark" type="submit">Publish book</button></div></form></section><section class="admin-panel"><h2>Pending M-Pesa payments</h2><p class="form-hint">Price: KSh 100 for 365 days. Verify the amount, recipient and transaction in your M-Pesa records before approving.</p><div id="payments">Loading…</div></section><section class="admin-panel"><h2>Author submissions</h2><div id="authors">Loading…</div></section></main><script src="/admin.js"></script></body></html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Dashboard | MindSpring Reads</title>
+  <style>
+    :root {
+      --green: #254d39;
+      --green-light: #e8f0e9;
+      --cream: #f7f5ef;
+      --ink: #242923;
+      --muted: #687068;
+      --line: #dedfd8;
+      --red: #a33131;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--cream); color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif; line-height: 1.5;
+    }
+    header {
+      background: var(--green); color: white; padding: 20px;
+    }
+    .header-inner, main { max-width: 1100px; margin: auto; }
+    .header-inner { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+    header h1 { margin: 0; font-size: 23px; }
+    header p { margin: 3px 0 0; opacity: .85; font-size: 13px; }
+    main { padding: 25px 16px 60px; }
+    h2 { font-size: 21px; margin: 0 0 15px; }
+    h3 { font-size: 16px; margin-top: 0; }
+    .panel {
+      background: white; border: 1px solid var(--line); border-radius: 12px;
+      padding: 20px; margin-bottom: 22px; box-shadow: 0 3px 12px #00000008;
+    }
+    .stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 22px; }
+    .stat { background: white; padding: 17px; border: 1px solid var(--line); border-radius: 10px; }
+    .stat strong { display: block; font-size: 25px; color: var(--green); }
+    .stat span { color: var(--muted); font-size: 12px; }
+    form.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field.full { grid-column: 1 / -1; }
+    label { font-weight: 700; font-size: 13px; }
+    input, select, textarea {
+      width: 100%; border: 1px solid #cfd3ca; border-radius: 7px;
+      padding: 11px; font: inherit; background: white; color: var(--ink);
+    }
+    textarea { min-height: 95px; resize: vertical; }
+    .hint { color: var(--muted); font-size: 12px; margin: 5px 0 0; }
+    button, .button {
+      border: 0; border-radius: 7px; padding: 10px 14px; cursor: pointer;
+      background: var(--green); color: white; font-weight: 700; font-size: 13px;
+      text-decoration: none; display: inline-block;
+    }
+    button:disabled { opacity: .55; cursor: wait; }
+    button.secondary { background: #e9ece7; color: var(--ink); }
+    button.danger { background: #a33131; }
+    button.approve { background: #276546; }
+    button.reject { background: #a33131; }
+    .message { margin: 12px 0 0; font-size: 13px; white-space: pre-wrap; }
+    .message.error { color: var(--red); }
+    .message.success { color: var(--green); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    .actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    .pill { display: inline-block; padding: 3px 8px; border-radius: 20px; background: var(--green-light); color: var(--green); font-size: 11px; }
+    .empty { padding: 20px; text-align: center; color: var(--muted); }
+    .top-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    a { color: var(--green); }
+    @media (max-width: 700px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+      form.grid { grid-template-columns: 1fr; }
+      .field.full { grid-column: auto; }
+      .header-inner { align-items: flex-start; flex-direction: column; }
+      .panel { padding: 15px; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div>
+      <h1>MindSpring Reads</h1>
+      <p>Administrator dashboard</p>
+    </div>
+    <div class="top-actions">
+      <a class="button" href="/">View website</a>
+      <button class="secondary" id="refreshButton" type="button">Refresh dashboard</button>
+      <button id="logoutButton" type="button">Sign out</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="globalMessage" class="message" role="status" aria-live="polite"></div>
+
+  <section class="stats">
+    <div class="stat"><strong id="statBooks">—</strong><span>Published books</span></div>
+    <div class="stat"><strong id="statUsers">—</strong><span>Reader accounts</span></div>
+    <div class="stat"><strong id="statAuthors">—</strong><span>Pending submissions</span></div>
+    <div class="stat"><strong id="statPayments">—</strong><span>Pending payments</span></div>
+  </section>
+
+  <section class="panel">
+    <h2>Publish a book</h2>
+    <p class="hint">Choose a manuscript and optionally a cover. Maximum file size: 20 MB.</p>
+    <form id="bookForm" class="grid" enctype="multipart/form-data">
+      <div class="field">
+        <label for="title">Book title</label>
+        <input id="title" name="title" required minlength="2" maxlength="180">
+      </div>
+      <div class="field">
+        <label for="author">Author</label>
+        <input id="author" name="author" required minlength="2">
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <select id="category" name="category" required>
+          <option>Self-help</option>
+          <option>Finance</option>
+          <option>Spirituality</option>
+          <option>Academic</option>
+          <option>Technology</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="cover">Cover image (optional)</label>
+        <input id="cover" name="cover" type="file" accept=".jpg,.jpeg,.png,.webp">
+      </div>
+      <div class="field full">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" required minlength="10" maxlength="2000"></textarea>
+      </div>
+      <div class="field full">
+        <label for="manuscript">Manuscript</label>
+        <input id="manuscript" name="manuscript" type="file"
+          accept=".txt,.md,.pdf,.doc,.docx,.rtf,.odt,.epub,.ppt,.pptx,.xls,.xlsx,.csv,.ods,.odp"
+          required>
+        <p class="hint">Accepted: TXT, MD, PDF, DOC, DOCX, RTF, ODT, EPUB, PPT, PPTX, XLS, XLSX, CSV, ODS and ODP.</p>
+      </div>
+      <div class="field full">
+        <button id="publishButton" type="submit">Publish book</button>
+        <p id="publishMessage" class="message" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Published books and uploaded files</h2>
+    <p class="hint">Use Delete to remove a book from the website and delete its stored manuscript and cover file.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Book</th><th>Category</th><th>Files</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="booksTable"><tr><td colspan="5" class="empty">Loading books…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Author submissions</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Manuscript</th><th>Author</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="authorsTable"><tr><td colspan="5" class="empty">Loading submissions…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>M-Pesa payment requests</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Reader</th><th>Amount</th><th>Transaction</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="paymentsTable"><tr><td colspan="5" class="empty">Loading payments…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+'use strict';
+
+const $ = selector => document.querySelector(selector);
+const allowedExtensions = [
+  '.txt','.md','.pdf','.doc','.docx','.rtf','.odt','.epub',
+  '.ppt','.pptx','.xls','.xlsx','.csv','.ods','.odp'
+];
+
+async function api(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const response = await fetch(url, {
+    credentials: 'same-origin',
+    ...options,
+    headers
+  });
+
+  let data = {};
+  try { data = await response.json(); } catch {}
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(data.error || 'Your administrator session has expired. Sign in again on the main website.');
+  }
+
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+  return data;
+}
+
+function showMessage(element, message, isError = false) {
+  element.textContent = message || '';
+  element.className = 'message' + (message ? (isError ? ' error' : ' success') : '');
+}
+
+function cell(text) {
+  const td = document.createElement('td');
+  td.textContent = text == null ? '' : String(text);
+  return td;
+}
+
+function button(label, className, action) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+  if (className) b.className = className;
+  b.addEventListener('click', action);
+  return b;
+}
+
+async function loadSummary() {
+  const s = await api('/api/admin/summary');
+  $('#statBooks').textContent = s.books;
+  $('#statUsers').textContent = s.users;
+  $('#statAuthors').textContent = s.pendingAuthors;
+  $('#statPayments').textContent = s.pendingPayments;
+}
+
+async function loadBooks() {
+  const data = await api('/api/admin/books');
+  const tbody = $('#booksTable');
+  tbody.replaceChildren();
+
+  if (!data.books.length) {
+    const tr = document.createElement('tr');
+    const td = cell('No books uploaded yet.');
+    td.colSpan = 5;
+    td.className = 'empty';
+    tr.append(td);
+    tbody.append(tr);
+    return;
+  }
+
+  data.books.forEach(book => {
+    const tr = document.createElement('tr');
+    const title = cell(`${book.title} — ${book.author}`);
+    const category = cell(book.category);
+    const files = cell(`${book.hasManuscript ? 'Manuscript saved' : 'No manuscript'}${book.coverUrl ? ' · Cover saved' : ''}`);
+    const status = cell(book.published ? 'Published' : 'Unpublished');
+    const actions = document.createElement('td');
+    const wrap = document.createElement('div');
+    wrap.className = 'actions';
+
+    if (book.manuscript_path && book.hasManuscript) {
+      const fileNote = document.createElement('span');
+      fileNote.className = 'pill';
+      fileNote.textContent = 'Original file stored';
+      wrap.append(fileNote);
+    }
+
+    wrap.append(button('Delete book and files', 'danger', async () => {
+      if (!confirm(`Delete "${book.title}" and its uploaded manuscript and cover? This cannot be undone.`)) return;
+      try {
+        const result = await api(`/api/admin/books/${book.id}`, { method: 'DELETE' });
+        showMessage($('#globalMessage'), result.message);
+        await refreshAll();
+      } catch (e) {
+        showMessage($('#globalMessage'), e.message, true);
+      }
+    }));
+
+    actions.append(wrap);
+    tr.append(title, category, files, status, actions);
+    tbody.append(tr);
+  });
+}
+
+async function loadAuthors() {
+  const data = await api('/api/admin/authors');
+  const tbody = $('#authorsTable');
+  tbody.replaceChildren();
+
+  if (!data.submissions.length) {
+    const tr = document.createElement('tr');
+    const td = cell('No author submissions yet.');
+    td.colSpan = 5;
+    td.className = 'empty';
+    tr.append(td);
+    tbody.append(tr);
+    return;
+  }
+
+  data.submissions.forEach(sub => {
+    const tr = document.createElement('tr');
+    tr.append(cell(`${sub.title}\n${sub.category}`), cell(`${sub.author_name}\n${sub.email}`),
+      cell(sub.submitted_at), cell(sub.status));
+
+    const td = document.createElement('td');
+    const wrap = document.createElement('div');
+    wrap.className = 'actions';
+
+    const download = document.createElement('a');
+    download.href = `/api/admin/authors/${sub.id}/download`;
+    download.textContent = 'Download';
+    download.className = 'button secondary';
+    wrap.append(download);
+
+    if (sub.status === 'pending') {
+      wrap.append(button('Approve & publish', 'approve', () => reviewAuthor(sub.id, 'approve')));
+      wrap.append(button('Reject', 'reject', () => reviewAuthor(sub.id, 'reject')));
+    }
+    td.append(wrap);
+    tr.append(td);
+    tbody.append(tr);
+  });
+}
+
+async function reviewAuthor(id, decision) {
+  const action = decision === 'approve' ? 'approve and publish' : 'reject';
+  if (!confirm(`Are you sure you want to ${action} this manuscript?`)) return;
+
+  try {
+    const result = await api(`/api/admin/authors/${id}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ decision })
+    });
+    showMessage($('#globalMessage'), result.message);
+    await refreshAll();
+  } catch (e) {
+    showMessage($('#globalMessage'), e.message, true);
+  }
+}
+
+async function loadPayments() {
+  const data = await api('/api/admin/payments');
+  const tbody = $('#paymentsTable');
+  tbody.replaceChildren();
+
+  if (!data.payments.length) {
+    const tr = document.createElement('tr');
+    const td = cell('No payment requests yet.');
+    td.colSpan = 5;
+    td.className = 'empty';
+    tr.append(td);
+    tbody.append(tr);
+    return;
+  }
+
+  data.payments.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.append(cell(`${p.reader_name}\n${p.reader_email}`), cell(`KSh ${p.amount_kes}`),
+      cell(p.transaction_code), cell(p.status));
+
+    const td = document.createElement('td');
+    const wrap = document.createElement('div');
+    wrap.className = 'actions';
+
+    if (p.status === 'pending') {
+      wrap.append(button('Approve', 'approve', () => reviewPayment(p.id, 'approve')));
+      wrap.append(button('Reject', 'reject', () => reviewPayment(p.id, 'reject')));
+    } else {
+      wrap.textContent = 'Reviewed';
+    }
+
+    td.append(wrap);
+    tr.append(td);
+    tbody.append(tr);
+  });
+}
+
+async function reviewPayment(id, decision) {
+  if (!confirm(`Confirm you want to ${decision} this payment? Verify the M-Pesa transaction first.`)) return;
+
+  try {
+    const result = await api(`/api/admin/payments/${id}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ decision })
+    });
+    showMessage($('#globalMessage'), result.message);
+    await refreshAll();
+  } catch (e) {
+    showMessage($('#globalMessage'), e.message, true);
+  }
+}
+
+async function refreshAll() {
+  showMessage($('#globalMessage'), 'Refreshing dashboard…');
+  try {
+    await Promise.all([loadSummary(), loadBooks(), loadAuthors(), loadPayments()]);
+    showMessage($('#globalMessage'), 'Dashboard updated.');
+  } catch (e) {
+    showMessage($('#globalMessage'), e.message, true);
+  }
+}
+
+$('#bookForm').addEventListener('submit', async event => {
+  event.preventDefault();
+
+  const form = event.currentTarget;
+  const buttonEl = $('#publishButton');
+  const message = $('#publishMessage');
+  const file = $('#manuscript').files[0];
+  const cover = $('#cover').files[0];
+
+  if (!file) {
+    showMessage(message, 'Choose a manuscript before publishing.', true);
+    return;
+  }
+
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  if (!allowedExtensions.includes(ext)) {
+    showMessage(message, 'Unsupported manuscript format.', true);
+    return;
+  }
+
+  if (file.size > 20 * 1024 * 1024 || (cover && cover.size > 20 * 1024 * 1024)) {
+    showMessage(message, 'Each uploaded file must be no larger than 20 MB.', true);
+    return;
+  }
+
+  buttonEl.disabled = true;
+  buttonEl.textContent = 'Publishing…';
+  showMessage(message, 'Uploading manuscript and publishing…');
+
+  try {
+    const result = await api('/api/admin/books', {
+      method: 'POST',
+      body: new FormData(form)
+    });
+
+    form.reset();
+    showMessage(message, result.message || 'Book published successfully.');
+    await Promise.all([loadSummary(), loadBooks()]);
+  } catch (e) {
+    showMessage(message, `Publishing failed: ${e.message}`, true);
+  } finally {
+    buttonEl.disabled = false;
+    buttonEl.textContent = 'Publish book';
+  }
+});
+
+$('#refreshButton').addEventListener('click', refreshAll);
+
+$('#logoutButton').addEventListener('click', async () => {
+  try {
+    await api('/api/auth/logout', { method: 'POST', body: '{}' });
+    location.href = '/';
+  } catch (e) {
+    showMessage($('#globalMessage'), e.message, true);
+  }
+});
+
+refreshAll();
+</script>
+</body>
+</html>

@@ -3,16 +3,27 @@
 
 const $ = selector => document.querySelector(selector);
 
+const ALLOWED_MANUSCRIPT_EXTENSIONS = [
+  'txt', 'md', 'pdf', 'doc', 'docx', 'rtf', 'odt',
+  'epub', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'ods', 'odp'
+];
+
+const MAX_MANUSCRIPT_SIZE = 20 * 1024 * 1024;
+const MAX_COVER_SIZE = 5 * 1024 * 1024;
+
+let isRefreshing = false;
+
 async function api(url, options = {}) {
-  const isForm = options.body instanceof FormData;
+  const headers = { ...(options.headers || {}) };
+
+  if (options.body && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   const response = await fetch(url, {
     credentials: 'same-origin',
     ...options,
-    headers: {
-      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
-      ...(options.headers || {})
-    }
+    headers
   });
 
   let data = {};
@@ -21,129 +32,300 @@ async function api(url, options = {}) {
   } catch {}
 
   if (!response.ok) {
-    throw new Error(data.error || 'Request failed. Please try again.');
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        data.error || 'Your administrator session has expired or access was denied. Please sign in again.'
+      );
+    }
+
+    throw new Error(data.error || `Request failed (${response.status}).`);
   }
 
   return data;
 }
 
-function message(text) {
-  const element = $('#message');
-  if (element) element.textContent = text;
+function message(text, isError = false) {
+  const element = $('#globalMessage') || $('#message');
+
+  if (element) {
+    element.textContent = text || '';
+    element.className =
+      'message' + (text ? (isError ? ' error' : ' success') : '');
+  }
 }
 
 function cell(text) {
   const td = document.createElement('td');
-  td.textContent = text ?? '';
+  td.textContent = text == null ? '' : String(text);
   return td;
 }
 
-function makeTable(headers, rows) {
-  const table = document.createElement('table');
-  table.className = 'admin-table';
-
-  const thead = document.createElement('thead');
-  const headerRow = document.createElement('tr');
-
-  headers.forEach(header => {
-    const th = document.createElement('th');
-    th.textContent = header;
-    headerRow.appendChild(th);
-  });
-
-  thead.appendChild(headerRow);
-  table.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-  rows.forEach(row => tbody.appendChild(row));
-  table.appendChild(tbody);
-
-  return table;
-}
-
-function showLogin() {
-  document.body.innerHTML = `
-    <header class="navbar">
-      <a href="/" class="brand">
-        <span class="brand-icon">M</span>
-        MindSpring <span class="brand-light">Reads</span>
-      </a>
-      <a href="/" class="button button-outline">Back to website</a>
-    </header>
-
-    <main style="max-width:480px;margin:65px auto;padding:25px;">
-      <div class="eyebrow">PRIVATE CONTROL PANEL</div>
-      <h1 style="font-size:40px;">Administrator <em>login.</em></h1>
-      <p>Sign in with your MindSpring Reads administrator account to manage books, author submissions and payments.</p>
-
-      <form id="adminLoginForm"
-        style="background:white;border:1px solid var(--line);border-radius:10px;padding:25px;">
-
-        <label for="adminEmail">Administrator email</label>
-        <input id="adminEmail" name="email" type="email"
-          autocomplete="username" required
-          placeholder="Enter administrator email">
-
-        <label for="adminPassword" style="display:block;margin-top:16px;">
-          Password
-        </label>
-        <input id="adminPassword" name="password" type="password"
-          autocomplete="current-password" required
-          placeholder="Enter your password">
-
-        <p id="loginMessage" role="status"
-          style="color:#a33;white-space:pre-wrap;"></p>
-
-        <button id="loginButton" class="button button-dark full-width"
-          type="submit">Sign in</button>
-      </form>
-
-      <p style="font-size:13px;margin-top:18px;">
-        Use the administrator credentials configured for your website.
-        Regular reader accounts cannot access the admin dashboard.
-      </p>
-    </main>
-  `;
-
-  $('#adminLoginForm').addEventListener('submit', async event => {
-    event.preventDefault();
-
-    const button = $('#loginButton');
-    const status = $('#loginMessage');
-    const email = $('#adminEmail').value.trim();
-    const password = $('#adminPassword').value;
-
-    button.disabled = true;
-    button.textContent = 'Signing in...';
-    status.textContent = '';
-
+function makeButton(label, className, action) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+  b.className = className || '';
+  b.addEventListener('click', async () => {
+    b.disabled = true;
     try {
-      const result = await api('/api/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password })
-      });
-
-      if (!result.user || result.user.role !== 'admin') {
-        await api('/api/auth/logout', {
-          method: 'POST',
-          body: JSON.stringify({})
-        });
-
-        throw new Error(
-          'This account is not an administrator. Use your admin account.'
-        );
-      }
-
-      window.location.reload();
-    } catch (error) {
-      status.textContent = error.message;
-      button.disabled = false;
-      button.textContent = 'Sign in';
+      await action();
+    } finally {
+      b.disabled = false;
     }
   });
+  return b;
 }
 
-async function load() {
+function emptyRow(tbody, columns, text) {
+  const tr = document.createElement('tr');
+  const td = cell(text);
+  td.colSpan = columns;
+  td.className = 'empty';
+  tr.appendChild(td);
+  tbody.replaceChildren(tr);
+}
+
+async function loadSummary() {
+  const s = await api('/api/admin/summary');
+
+  if ($('#statBooks')) $('#statBooks').textContent = s.books ?? 0;
+  if ($('#statUsers')) $('#statUsers').textContent = s.users ?? 0;
+  if ($('#statAuthors')) $('#statAuthors').textContent = s.pendingAuthors ?? 0;
+  if ($('#statPayments')) $('#statPayments').textContent = s.pendingPayments ?? 0;
+}
+
+async function loadBooks() {
+  const data = await api('/api/admin/books');
+  const tbody = $('#booksTable');
+
+  if (!tbody) return;
+
+  const books = Array.isArray(data.books) ? data.books : [];
+
+  if (!books.length) {
+    emptyRow(tbody, 5, 'No books uploaded yet.');
+    return;
+  }
+
+  tbody.replaceChildren();
+
+  for (const book of books) {
+    const tr = document.createElement('tr');
+
+    tr.append(
+      cell(`${book.title || 'Untitled'} — ${book.author || 'Unknown author'}`),
+      cell(book.category || 'Other'),
+      cell(
+        `${book.hasManuscript ? 'Manuscript saved' : 'No manuscript'}` +
+        `${book.coverUrl ? ' · Cover saved' : ''}`
+      ),
+      cell(book.published ? 'Published' : 'Unpublished')
+    );
+
+    const actions = cell('');
+    const wrap = document.createElement('div');
+    wrap.className = 'actions';
+
+    if (book.manuscript_path && book.hasManuscript) {
+      const note = document.createElement('span');
+      note.className = 'pill';
+      note.textContent = 'Original file stored';
+      wrap.appendChild(note);
+    }
+
+    wrap.appendChild(makeButton(
+      'Delete book and files',
+      'danger',
+      async () => {
+        const confirmed = confirm(
+          `Delete "${book.title}" and its stored manuscript and cover? This cannot be undone.`
+        );
+
+        if (!confirmed) return;
+
+        const result = await api(
+          `/api/admin/books/${encodeURIComponent(book.id)}`,
+          { method: 'DELETE' }
+        );
+
+        message(result.message || 'Book deleted.');
+        await refreshAll();
+      }
+    ));
+
+    actions.appendChild(wrap);
+    tr.appendChild(actions);
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadAuthors() {
+  const data = await api('/api/admin/authors');
+  const tbody = $('#authorsTable');
+
+  if (!tbody) return;
+
+  const submissions = Array.isArray(data.submissions)
+    ? data.submissions
+    : [];
+
+  if (!submissions.length) {
+    emptyRow(tbody, 5, 'No author submissions yet.');
+    return;
+  }
+
+  tbody.replaceChildren();
+
+  for (const sub of submissions) {
+    const tr = document.createElement('tr');
+
+    tr.append(
+      cell(`${sub.title || 'Untitled'}\n${sub.category || 'Other'}`),
+      cell(`${sub.author_name || 'Unknown'}\n${sub.email || ''}`),
+      cell(sub.submitted_at || ''),
+      cell(sub.status || 'unknown')
+    );
+
+    const actions = cell('');
+    const wrap = document.createElement('div');
+    wrap.className = 'actions';
+
+    const download = document.createElement('a');
+    download.href = `/api/admin/authors/${encodeURIComponent(sub.id)}/download`;
+    download.textContent = 'Download';
+    download.className = 'button secondary';
+    wrap.appendChild(download);
+
+    if (sub.status === 'pending') {
+      wrap.appendChild(makeButton('Approve & publish', 'approve', async () => {
+        if (!confirm(
+          `Publish "${sub.title}"? Confirm that the author has permission to publish it.`
+        )) return;
+
+        const result = await api(
+          `/api/admin/authors/${encodeURIComponent(sub.id)}/review`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ decision: 'approve' })
+          }
+        );
+
+        message(result.message || 'Submission approved and published.');
+        await refreshAll();
+      }));
+
+      wrap.appendChild(makeButton('Reject', 'reject', async () => {
+        if (!confirm(`Reject "${sub.title}"?`)) return;
+
+        const result = await api(
+          `/api/admin/authors/${encodeURIComponent(sub.id)}/review`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ decision: 'reject' })
+          }
+        );
+
+        message(result.message || 'Submission rejected.');
+        await refreshAll();
+      }));
+    }
+
+    actions.appendChild(wrap);
+    tr.appendChild(actions);
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadPayments() {
+  const data = await api('/api/admin/payments');
+  const tbody = $('#paymentsTable');
+
+  if (!tbody) return;
+
+  const payments = Array.isArray(data.payments) ? data.payments : [];
+
+  if (!payments.length) {
+    emptyRow(tbody, 5, 'No payment requests yet.');
+    return;
+  }
+
+  tbody.replaceChildren();
+
+  for (const p of payments) {
+    const tr = document.createElement('tr');
+
+    tr.append(
+      cell(`${p.reader_name || 'Unknown reader'}\n${p.reader_email || ''}`),
+      cell(`KSh ${p.amount_kes ?? 100}`),
+      cell(p.transaction_code || ''),
+      cell(p.status || 'unknown')
+    );
+
+    const actions = cell('');
+    const wrap = document.createElement('div');
+    wrap.className = 'actions';
+
+    if (p.status === 'pending') {
+      wrap.appendChild(makeButton('Approve', 'approve', async () => {
+        if (!confirm(
+          `Have you independently verified transaction ${p.transaction_code} for KSh ${p.amount_kes} in your M-Pesa records?`
+        )) return;
+
+        const note = prompt('Optional administrator note:', '') || '';
+
+        const result = await api(
+          `/api/admin/payments/${encodeURIComponent(p.id)}/review`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ decision: 'approve', note })
+          }
+        );
+
+        message(result.message || 'Payment approved.');
+        await refreshAll();
+      }));
+
+      wrap.appendChild(makeButton('Reject', 'reject', async () => {
+        if (!confirm(`Reject payment ${p.transaction_code}?`)) return;
+
+        const note = prompt('Optional reason for rejection:', '') || '';
+
+        const result = await api(
+          `/api/admin/payments/${encodeURIComponent(p.id)}/review`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ decision: 'reject', note })
+          }
+        );
+
+        message(result.message || 'Payment rejected.');
+        await refreshAll();
+      }));
+    } else {
+      wrap.textContent = p.status === 'approved'
+        ? 'Access activated'
+        : 'Reviewed';
+    }
+
+    actions.appendChild(wrap);
+    tr.appendChild(actions);
+    tbody.appendChild(tr);
+  }
+}
+
+async function refreshAll() {
+  if (isRefreshing) return;
+
+  isRefreshing = true;
+
+  const refreshButton = $('#refreshButton');
+  if (refreshButton) {
+    refreshButton.disabled = true;
+    refreshButton.textContent = 'Refreshing…';
+  }
+
+  message('Refreshing dashboard…');
+
   try {
     const me = await api('/api/auth/me');
 
@@ -152,177 +334,37 @@ async function load() {
       return;
     }
 
-    const [summary, payments, authors] = await Promise.all([
-      api('/api/admin/summary'),
-      api('/api/admin/payments'),
-      api('/api/admin/authors')
+    await Promise.all([
+      loadSummary(),
+      loadBooks(),
+      loadAuthors(),
+      loadPayments()
     ]);
 
-    $('#summary').replaceChildren(
-      ...[
-        ['Readers', summary.users],
-        ['Published books', summary.books],
-        ['Pending payments', summary.pendingPayments],
-        ['Pending manuscripts', summary.pendingAuthors]
-      ].map(([label, number]) => {
-        const div = document.createElement('div');
-        div.className = 'admin-stat';
-
-        const strong = document.createElement('strong');
-        strong.textContent = number;
-
-        const span = document.createElement('span');
-        span.textContent = label;
-
-        div.append(strong, span);
-        return div;
-      })
-    );
-
-    renderPayments(payments.payments || []);
-    renderAuthors(authors.submissions || []);
-
+    message('Dashboard updated.');
   } catch (error) {
-    message(error.message);
+    message(error.message || 'Could not refresh the dashboard.', true);
+  } finally {
+    isRefreshing = false;
+
+    if (refreshButton) {
+      refreshButton.disabled = false;
+      refreshButton.textContent = 'Refresh dashboard';
+    }
   }
 }
 
-function renderPayments(items) {
-  const container = $('#payments');
-
-  if (!items.length) {
-    container.textContent = 'No payment requests yet.';
-    return;
-  }
-
-  const rows = items.map(payment => {
-    const row = document.createElement('tr');
-
-    row.append(
-      cell(`${payment.reader_name}\n${payment.reader_email}`),
-      cell(`KSh ${payment.amount_kes}\n${payment.payer_name}`),
-      cell(payment.transaction_code),
-      cell(`${payment.status}\n${payment.submitted_at}`)
-    );
-
-    const actions = cell('');
-
-    if (payment.status === 'pending') {
-      for (const [label, decision] of [
-        ['Approve', 'approve'],
-        ['Reject', 'reject']
-      ]) {
-        const button = document.createElement('button');
-        button.className =
-          `button ${decision === 'approve' ? 'button-dark' : 'button-outline'}`;
-        button.textContent = label;
-
-        button.addEventListener('click', async () => {
-          if (
-            decision === 'approve' &&
-            !confirm(
-              `Have you independently verified transaction ` +
-              `${payment.transaction_code} for KSh ${payment.amount_kes} ` +
-              `in your M-Pesa records?`
-            )
-          ) return;
-
-          try {
-            const note = prompt('Optional administrator note:', '') || '';
-
-            await api(`/api/admin/payments/${payment.id}/review`, {
-              method: 'POST',
-              body: JSON.stringify({ decision, note })
-            });
-
-            message(`Payment ${decision} request processed.`);
-            await load();
-          } catch (error) {
-            message(error.message);
-          }
-        });
-
-        actions.appendChild(button);
-      }
-    } else {
-      actions.textContent = payment.status === 'approved'
-        ? 'Access activated'
-        : 'No further action';
-    }
-
-    row.appendChild(actions);
-    return row;
-  });
-
-  container.replaceChildren(
-    makeTable(
-      ['Reader', 'Amount / payer', 'Transaction code', 'Status / submitted', 'Actions'],
-      rows
-    )
-  );
-}
-
-function renderAuthors(items) {
-  const container = $('#authors');
-
-  if (!items.length) {
-    container.textContent = 'No author submissions yet.';
-    return;
-  }
-
-  const rows = items.map(author => {
-    const row = document.createElement('tr');
-
-    row.append(
-      cell(`${author.title}\nBy ${author.author_name}\n${author.email}`),
-      cell(`${author.category}\n${author.description}`),
-      cell(`${author.status}\n${author.submitted_at}`)
-    );
-
-    const actions = cell('');
-
-    if (author.status === 'pending') {
-      for (const [label, decision] of [
-        ['Approve & publish', 'approve'],
-        ['Reject', 'reject']
-      ]) {
-        const button = document.createElement('button');
-        button.className =
-          `button ${decision === 'approve' ? 'button-dark' : 'button-outline'}`;
-        button.textContent = label;
-
-        button.addEventListener('click', async () => {
-          if (
-            decision === 'approve' &&
-            !confirm(
-              `Publish "${author.title}"? Confirm that the author has permission to publish it.`
-            )
-          ) return;
-
-          try {
-            await api(`/api/admin/authors/${author.id}/review`, {
-              method: 'POST',
-              body: JSON.stringify({ decision })
-            });
-
-            message(`Author submission ${decision} request processed.`);
-            await load();
-          } catch (error) {
-            message(error.message);
-          }
-        });
-
-        actions.appendChild(button);
-      }
-    }
-
-    row.appendChild(actions);
-    return row;
-  });
-
-  container.replaceChildren(
-    makeTable(['Submission', 'Description', 'Status', 'Actions'], rows)
-  );
+function showLogin() {
+  // If this dashboard's HTML contains its own login form, use it.
+  // Otherwise show a clear instruction rather than a blank page.
+  document.body.innerHTML = `
+    <main style="max-width:600px;margin:70px auto;padding:24px;font-family:Arial,sans-serif">
+      <h1>Administrator sign-in required</h1>
+      <p>Your administrator session is missing or has expired.</p>
+      <p>Please sign in with your administrator account on the main website, then reopen the dashboard.</p>
+      <p><a href="/">Return to MindSpring Reads</a></p>
+      <p><a href="/admin">Reload the administrator dashboard</a></p>
+    </main>`;
 }
 
 const bookForm = $('#bookForm');
@@ -331,39 +373,96 @@ if (bookForm) {
   bookForm.addEventListener('submit', async event => {
     event.preventDefault();
 
-    const form = event.currentTarget;
-    const data = new FormData(form);
+    const submitButton = $('#publishButton') ||
+      bookForm.querySelector('button[type="submit"]');
+
+    const manuscript = bookForm.querySelector('[name="manuscript"]')?.files?.[0];
+    const cover = bookForm.querySelector('[name="cover"]')?.files?.[0];
+
+    if (!manuscript) {
+      message('Please choose a manuscript file.', true);
+      return;
+    }
+
+    const extension = manuscript.name.includes('.')
+      ? manuscript.name.split('.').pop().toLowerCase()
+      : '';
+
+    if (!ALLOWED_MANUSCRIPT_EXTENSIONS.includes(extension)) {
+      message('Unsupported manuscript file type.', true);
+      return;
+    }
+
+    if (manuscript.size === 0 || manuscript.size > MAX_MANUSCRIPT_SIZE) {
+      message('The manuscript must be larger than 0 bytes and no larger than 20 MB.', true);
+      return;
+    }
+
+    if (cover) {
+      const coverExtension = cover.name.includes('.')
+        ? cover.name.split('.').pop().toLowerCase()
+        : '';
+
+      if (!['jpg', 'jpeg', 'png', 'webp'].includes(coverExtension)) {
+        message('The cover must be a JPG, PNG, or WebP image.', true);
+        return;
+      }
+
+      if (cover.size === 0 || cover.size > MAX_COVER_SIZE) {
+        message('The cover must be larger than 0 bytes and no larger than 5 MB.', true);
+        return;
+      }
+    }
+
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = 'Publishing…';
+    }
+
+    message('Uploading manuscript…');
 
     try {
       const result = await api('/api/admin/books', {
         method: 'POST',
-        body: data
+        body: new FormData(bookForm)
       });
 
+      bookForm.reset();
       message(result.message || 'Book published successfully.');
-      form.reset();
-      await load();
+      await refreshAll();
     } catch (error) {
-      message(error.message);
+      message(`Publishing failed: ${error.message}`, true);
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Publish book';
+      }
     }
   });
 }
 
-const logoutButton = $('#logout');
+const refreshButton = $('#refreshButton');
+if (refreshButton) {
+  refreshButton.addEventListener('click', refreshAll);
+}
 
+const logoutButton = $('#logoutButton') || $('#logout');
 if (logoutButton) {
   logoutButton.addEventListener('click', async () => {
+    logoutButton.disabled = true;
+
     try {
       await api('/api/auth/logout', {
         method: 'POST',
         body: JSON.stringify({})
       });
 
-      window.location.href = '/admin';
+      window.location.href = '/';
     } catch (error) {
-      message(error.message);
+      message(error.message, true);
+      logoutButton.disabled = false;
     }
   });
 }
 
-load();
+refreshAll();

@@ -189,3 +189,272 @@ label { display: block; font-size: 11px; font-weight: 700; margin: 14px 0 6px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* ==========================================
+   MINDSRING READS — READER IMPROVEMENTS
+   ========================================== */
+
+/* Respect the hidden attribute used in index.html */
+[hidden] {
+  display: none !important;
+}
+
+.modal[hidden] {
+  display: none !important;
+}
+
+.modal {
+  isolation: isolate;
+}
+
+.modal.open {
+  display: flex;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Larger, more comfortable reading window */
+.reader-card {
+  width: min(100%, 1000px);
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 30px;
+}
+
+.reader-card .reader-content {
+  flex: 1;
+  min-height: 180px;
+  max-height: 58vh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #a8b4a3 #f1efe7;
+  padding: 28px clamp(12px, 4vw, 48px);
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font: 17px/2 var(--serif);
+  white-space: pre-wrap;
+  overflow-x: hidden;
+}
+
+.reader-content p {
+  margin: 0 0 1.3em;
+}
+
+.reader-content mark {
+  background: #ffe49a;
+  color: #292719;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* Dark reading mode */
+.reader-content.dark-mode {
+  --paper: #1c2521;
+  --ink: #e8e8dc;
+  --line: #35433b;
+  background: #1c2521;
+  color: #e8e8dc;
+  border-color: #35433b;
+}
+
+.reader-content.dark-mode mark {
+  background: #806522;
+  color: #fff4c7;
+}
+
+.reader-content.dark-mode::-webkit-scrollbar-track {
+  background: #1c2521;
+}
+
+.reader-author {
+  margin-bottom: 8px;
+}
+
+/* Reader toolbar */
+.reader-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.reader-toolbar button,
+.reader-toolbar input {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.reader-toolbar button {
+  font-weight: 700;
+}
+
+.reader-toolbar button:hover {
+  background: var(--green-light);
+  color: var(--green);
+}
+
+.reader-toolbar input {
+  flex: 1 1 180px;
+  min-width: 120px;
+}
+
+.reader-search-message {
+  font-size: 11px;
+  color: var(--muted);
+  min-height: 18px;
+  margin: 4px 0;
+}
+
+/* Reading progress */
+.reader-progress {
+  margin: 12px 0;
+}
+
+.reader-progress-track {
+  width: 100%;
+  height: 5px;
+  background: #e6e4da;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.reader-progress-bar {
+  height: 100%;
+  width: 0;
+  background: var(--green);
+  border-radius: inherit;
+  transition: width .15s ease;
+}
+
+.reader-progress-text {
+  display: block;
+  margin-top: 5px;
+  text-align: right;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* Book search and category filters */
+#bookSearch,
+#bookCategoryFilter {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 11px 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+#bookSearchMessage {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 8px 0;
+}
+
+.category-card:focus-visible,
+.read-btn:focus-visible,
+.reader-toolbar button:focus-visible {
+  outline: 3px solid #c99c45;
+  outline-offset: 3px;
+}
+
+/* Empty and error messages */
+.empty-state {
+  line-height: 1.8;
+}
+
+#readerMessage {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* Mobile reader */
+@media (max-width: 650px) {
+  .reader-card {
+    width: 100%;
+    max-height: 96vh;
+    padding: 22px 15px;
+  }
+
+  .reader-card .reader-content {
+    max-height: 55vh;
+    min-height: 160px;
+    padding: 20px 14px;
+    font-size: 16px;
+    line-height: 1.85;
+  }
+
+  .reader-toolbar {
+    gap: 6px;
+  }
+
+  .reader-toolbar button {
+    padding: 8px 9px;
+    font-size: 11px;
+  }
+
+  .reader-toolbar input {
+    flex-basis: 100%;
+  }
+
+  .reader-progress {
+    margin: 8px 0;
+  }
+}
+
+/* Prevent long titles and content from breaking the layout */
+.book-info h3,
+.reader-card h2,
+.reader-content {
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-progress-bar {
+    transition: none;
+  }
+}
+
+@media (max-width: 650px) {
+  .navbar {
+    position: sticky;
+  }
+
+  #primaryNavigation.mobile-open {
+    display: flex;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 0;
+    padding: 12px 6%;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 12px 20px #0000000d;
+  }
+
+  #primaryNavigation.mobile-open a {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  #mobileMenuBtn {
+    display: inline-flex;
+  }
+}
