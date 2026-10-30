@@ -3,8 +3,8 @@
 
 /* =========================================================
    MINDSRING READS
-   Frontend controller for the existing Node.js backend.
-   Preserves the existing database and uploaded files.
+   Complete frontend controller.
+   Uses the existing Node.js backend and database.
    ========================================================= */
 
 const API_BASE = "/api";
@@ -17,6 +17,7 @@ let readerFontSize = 17;
 let readerDarkMode = false;
 let readerSearchTerm = "";
 let savedReaderPosition = 0;
+
 let publicConfig = {
   priceKes: 100,
   durationDays: 365,
@@ -25,7 +26,6 @@ let publicConfig = {
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-
 const byId = (id) => document.getElementById(id);
 
 function normalise(value) {
@@ -51,7 +51,9 @@ function setMessage(target, message, type = "info") {
   element.setAttribute("role", type === "error" ? "alert" : "status");
 }
 
-/* -------------------- API -------------------- */
+/* =========================================================
+   API CONNECTION
+   ========================================================= */
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -71,20 +73,26 @@ async function api(path, options = {}) {
       headers,
       credentials: "same-origin"
     });
-  } catch {
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(
+        "The request timed out. Please try again."
+      );
+    }
+
     throw new Error(
-      "Cannot reach the server. Make sure Node.js is running."
+      "Cannot reach the server. It may be waking up. Please wait a moment and try again."
     );
   }
 
-  const text = await response.text();
+  const responseText = await response.text();
   let data = {};
 
-  if (text) {
+  if (responseText) {
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(responseText);
     } catch {
-      data = { message: text };
+      data = { message: responseText };
     }
   }
 
@@ -99,7 +107,9 @@ async function api(path, options = {}) {
   return data;
 }
 
-/* -------------------- Notifications -------------------- */
+/* =========================================================
+   NOTIFICATIONS
+   ========================================================= */
 
 function showNotice(message, title = "MindSpring Reads") {
   const modal = byId("messageModal");
@@ -108,14 +118,20 @@ function showNotice(message, title = "MindSpring Reads") {
 
   if (modal && text) {
     text.textContent = message;
-    if (heading) heading.textContent = title;
+
+    if (heading) {
+      heading.textContent = title;
+    }
+
     openModal(modal);
   } else {
     window.alert(message);
   }
 }
 
-/* -------------------- Modals -------------------- */
+/* =========================================================
+   MODALS
+   ========================================================= */
 
 function openModal(modalOrId) {
   const modal = typeof modalOrId === "string"
@@ -127,7 +143,6 @@ function openModal(modalOrId) {
     return;
   }
 
-  // Close other dialogs to avoid stacked backdrops.
   $$(".modal.open:not([hidden])").forEach((other) => {
     if (other !== modal) closeModal(other);
   });
@@ -135,6 +150,7 @@ function openModal(modalOrId) {
   modal.hidden = false;
   modal.classList.add("active", "open", "show");
   modal.setAttribute("aria-hidden", "false");
+
   document.body.classList.add("modal-open");
 
   const focusable = $(
@@ -169,7 +185,6 @@ function closeAllModals() {
 
 function setupModalEvents() {
   $$(".modal").forEach((modal) => {
-    // Supports both data-close and data-close-modal.
     $$(
       ".close-modal, [data-close], [data-close-modal]",
       modal
@@ -178,7 +193,9 @@ function setupModalEvents() {
     });
 
     modal.addEventListener("click", (event) => {
-      if (event.target === modal) closeModal(modal);
+      if (event.target === modal) {
+        closeModal(modal);
+      }
     });
 
     modal.hidden = true;
@@ -189,12 +206,15 @@ function setupModalEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       const modal = $(".modal.open:not([hidden])");
+
       if (modal) closeModal(modal);
     }
   });
 }
 
-/* -------------------- Configuration -------------------- */
+/* =========================================================
+   PUBLIC CONFIGURATION
+   ========================================================= */
 
 async function loadPublicConfig() {
   try {
@@ -216,7 +236,8 @@ function updatePaymentInstructions() {
   const numberElement = byId("mpesaNumber");
 
   if (numberElement) {
-    numberElement.textContent = publicConfig.mpesaNumber || "Contact the administrator";
+    numberElement.textContent =
+      publicConfig.mpesaNumber || "Contact the administrator";
   }
 
   $$("[data-access-price]").forEach((element) => {
@@ -228,7 +249,9 @@ function updatePaymentInstructions() {
   });
 }
 
-/* -------------------- Account and session -------------------- */
+/* =========================================================
+   USER ACCOUNT AND SESSION
+   ========================================================= */
 
 function updateAccountUI() {
   const display = byId("currentUserDisplay");
@@ -251,8 +274,6 @@ function updateAccountUI() {
   if (registerButton) registerButton.hidden = Boolean(currentUser);
   if (logoutButton) logoutButton.hidden = !currentUser;
 
-  // Do not assume an administrator role from a displayed name.
-  const adminOnly = $$("[data-admin-only]");
   const isAdmin = Boolean(
     currentUser &&
     (
@@ -261,7 +282,7 @@ function updateAccountUI() {
     )
   );
 
-  adminOnly.forEach((element) => {
+  $$("[data-admin-only]").forEach((element) => {
     element.hidden = !isAdmin;
   });
 
@@ -296,11 +317,14 @@ function updateAccessStatus(reading = null) {
 async function checkSession() {
   try {
     const result = await api("/auth/me");
+
     currentUser = result.user || null;
+
     updateAccountUI();
     updateAccessStatus(result.reading || null);
   } catch (error) {
     console.warn("Session check failed:", error.message);
+
     currentUser = null;
     updateAccountUI();
   }
@@ -316,6 +340,10 @@ function openRegister() {
   openModal("registerModal");
 }
 
+/* =========================================================
+   LOGIN
+   ========================================================= */
+
 async function handleLogin(event) {
   event.preventDefault();
 
@@ -323,8 +351,13 @@ async function handleLogin(event) {
   const button = $("button[type='submit']", form);
   const message = byId("loginMessage");
 
-  const email = String(form.elements.email?.value || "").trim();
-  const password = String(form.elements.password?.value || "");
+  const email = String(
+    form.elements.email?.value || ""
+  ).trim();
+
+  const password = String(
+    form.elements.password?.value || ""
+  );
 
   if (!email || !password) {
     setMessage(message, "Enter your email and password.", "error");
@@ -340,6 +373,7 @@ async function handleLogin(event) {
     });
 
     currentUser = result.user || null;
+
     updateAccountUI();
     updateAccessStatus(result.reading || null);
 
@@ -347,6 +381,7 @@ async function handleLogin(event) {
     closeModal("loginModal");
 
     await loadBooks();
+
     showNotice("You have signed in successfully.");
   } catch (error) {
     setMessage(message, error.message, "error");
@@ -354,6 +389,10 @@ async function handleLogin(event) {
     if (button) button.disabled = false;
   }
 }
+
+/* =========================================================
+   REGISTRATION
+   ========================================================= */
 
 async function handleRegister(event) {
   event.preventDefault();
@@ -363,6 +402,7 @@ async function handleRegister(event) {
   const message = byId("registerMessage");
 
   const formData = new FormData(form);
+
   const name = String(
     formData.get("name") ||
     formData.get("fullName") ||
@@ -372,6 +412,7 @@ async function handleRegister(event) {
 
   const email = String(formData.get("email") || "").trim();
   const password = String(formData.get("password") || "");
+
   const confirmation =
     formData.get("confirmPassword") ??
     formData.get("confirm_password");
@@ -404,6 +445,7 @@ async function handleRegister(event) {
     });
 
     currentUser = result.user || null;
+
     updateAccountUI();
     updateAccessStatus(result.reading || null);
 
@@ -411,6 +453,7 @@ async function handleRegister(event) {
     closeModal("registerModal");
 
     await loadBooks();
+
     showNotice("Your account has been created successfully.");
   } catch (error) {
     setMessage(message, error.message, "error");
@@ -419,20 +462,31 @@ async function handleRegister(event) {
   }
 }
 
+/* =========================================================
+   LOGOUT
+   ========================================================= */
+
 async function handleLogout() {
   try {
-    await api("/auth/logout", { method: "POST" });
+    await api("/auth/logout", {
+      method: "POST"
+    });
   } catch (error) {
     console.warn("Logout request failed:", error.message);
   }
 
   currentUser = null;
+
   updateAccountUI();
+
   await loadBooks();
+
   showNotice("You have signed out.");
 }
 
-/* -------------------- Navigation and buttons -------------------- */
+/* =========================================================
+   NAVIGATION
+   ========================================================= */
 
 function setupNavigation() {
   const mobileButton = byId("mobileMenuBtn");
@@ -444,13 +498,19 @@ function setupNavigation() {
     const expanded =
       mobileButton.getAttribute("aria-expanded") === "true";
 
-    mobileButton.setAttribute("aria-expanded", String(!expanded));
+    mobileButton.setAttribute(
+      "aria-expanded",
+      String(!expanded)
+    );
+
     navigation.classList.toggle("mobile-open", !expanded);
+    navigation.classList.toggle("active", !expanded);
   });
 
   navigation?.querySelectorAll("a").forEach((link) => {
     link.addEventListener("click", () => {
-      navigation.classList.remove("mobile-open");
+      navigation.classList.remove("mobile-open", "active");
+
       mobileButton?.setAttribute("aria-expanded", "false");
     });
   });
@@ -462,7 +522,6 @@ function setupNavigation() {
   byId("switchToRegister")?.addEventListener("click", openRegister);
   byId("switchToLogin")?.addEventListener("click", openLogin);
 
-  // The IDs below match the supplied index.html.
   byId("authorBtn")?.addEventListener("click", () => {
     if (!currentUser) {
       showNotice("Please sign in before submitting your manuscript.");
@@ -483,7 +542,6 @@ function setupNavigation() {
     openModal("paymentModal");
   });
 
-  // Support older versions of the page too.
   byId("openPaymentBtn")?.addEventListener("click", () => {
     if (!currentUser) {
       showNotice("Please sign in before requesting reader access.");
@@ -495,7 +553,9 @@ function setupNavigation() {
   });
 }
 
-/* -------------------- Book listing and search -------------------- */
+/* =========================================================
+   BOOK DATA HELPERS
+   ========================================================= */
 
 function getBookId(book) {
   return book.id ?? book.book_id ?? "";
@@ -514,8 +574,17 @@ function getBookCategory(book) {
 }
 
 function getBookCover(book) {
-  return book.coverUrl || book.cover_url || book.cover_path || "";
+  return (
+    book.coverUrl ||
+    book.cover_url ||
+    book.cover_path ||
+    ""
+  );
 }
+
+/* =========================================================
+   BOOK SEARCH AND FILTERING
+   ========================================================= */
 
 function getSelectedCategory() {
   const select = byId("bookCategoryFilter");
@@ -525,8 +594,7 @@ function getSelectedCategory() {
 
     if (
       value === "all" ||
-      value === "all categories" ||
-      value === "all categories "
+      value === "all categories"
     ) {
       return "";
     }
@@ -534,7 +602,10 @@ function getSelectedCategory() {
     return select.value;
   }
 
-  const activeButton = $(".category-card.active[data-category]");
+  const activeButton = $(
+    ".category-card.active[data-category]"
+  );
+
   return activeButton?.dataset.category || "";
 }
 
@@ -562,6 +633,7 @@ function filterBooks() {
   renderBooks(results);
 
   const message = byId("bookSearchMessage");
+
   if (message) {
     message.textContent = results.length
       ? `${results.length} book${results.length === 1 ? "" : "s"} found.`
@@ -569,8 +641,11 @@ function filterBooks() {
   }
 }
 
+/* =========================================================
+   BOOK DISPLAY
+   ========================================================= */
+
 function renderBooks(books) {
-  // Match the actual ID and class in the supplied index.html.
   const container =
     byId("booksContainer") ||
     byId("bookGrid") ||
@@ -578,7 +653,7 @@ function renderBooks(books) {
     $(".book-grid");
 
   if (!container) {
-    console.error("Library container was not found in index.html.");
+    console.error("Library container was not found.");
     return;
   }
 
@@ -586,12 +661,23 @@ function renderBooks(books) {
 
   if (!books.length) {
     const empty = document.createElement("div");
+
     empty.className = "empty-state";
     empty.textContent =
       "No books found. Try another search or check back later.";
+
     container.appendChild(empty);
     return;
   }
+
+  const backgrounds = [
+    "#183d32",
+    "#58664b",
+    "#785c43",
+    "#495b69",
+    "#735b75",
+    "#536c65"
+  ];
 
   books.forEach((book, index) => {
     const card = document.createElement("article");
@@ -600,12 +686,9 @@ function renderBooks(books) {
     const cover = document.createElement("div");
     cover.className = "cover";
 
-    const backgrounds = [
-      "#183d32", "#58664b", "#785c43",
-      "#495b69", "#735b75", "#536c65"
-    ];
+    cover.style.background =
+      backgrounds[index % backgrounds.length];
 
-    cover.style.background = backgrounds[index % backgrounds.length];
     cover.style.position = "relative";
     cover.style.overflow = "hidden";
 
@@ -613,13 +696,16 @@ function renderBooks(books) {
 
     if (coverUrl) {
       const image = document.createElement("img");
+
       image.src = coverUrl;
       image.alt = `Cover of ${getBookTitle(book)}`;
       image.loading = "lazy";
+
       image.style.cssText =
         "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
 
       image.addEventListener("error", () => image.remove());
+
       cover.appendChild(image);
     }
 
@@ -668,15 +754,22 @@ function renderBooks(books) {
     readButton.type = "button";
     readButton.className = "read-btn";
     readButton.textContent = "Read book";
+
     readButton.addEventListener("click", () => {
       readBook(getBookId(book));
     });
 
     info.append(tag, title, description, meta, readButton);
+
     card.append(cover, info);
+
     container.appendChild(card);
   });
 }
+
+/* =========================================================
+   LOAD BOOKS FROM BACKEND
+   ========================================================= */
 
 async function loadBooks() {
   const container =
@@ -718,6 +811,10 @@ async function loadBooks() {
     }
   }
 }
+
+/* =========================================================
+   BOOK SEARCH EVENTS
+   ========================================================= */
 
 function setupBookSearch() {
   const search = byId("bookSearch");
@@ -764,11 +861,14 @@ function setupBookSearch() {
 
       button.classList.add("active");
 
-      if (categorySelect) categorySelect.value = category;
+      if (categorySelect) {
+        categorySelect.value = category;
+      }
 
       filterBooks();
 
       const library = byId("books") || byId("library");
+
       library?.scrollIntoView({
         behavior: "smooth",
         block: "start"
@@ -777,7 +877,9 @@ function setupBookSearch() {
   });
 }
 
-/* -------------------- Reader -------------------- */
+/* =========================================================
+   READER HELPERS
+   ========================================================= */
 
 function getReaderElements() {
   return {
@@ -793,7 +895,11 @@ function getReaderElements() {
 }
 
 function getReaderStorageKey(bookId) {
-  const account = currentUser?.id || currentUser?.email || "guest";
+  const account =
+    currentUser?.id ||
+    currentUser?.email ||
+    "guest";
+
   return `mindspring-reader-${account}-${bookId}`;
 }
 
@@ -809,9 +915,17 @@ function resetReader() {
     elements.content.scrollTop = 0;
   }
 
-  if (elements.searchInput) elements.searchInput.value = "";
-  if (elements.searchMessage) elements.searchMessage.textContent = "";
-  if (elements.message) elements.message.textContent = "";
+  if (elements.searchInput) {
+    elements.searchInput.value = "";
+  }
+
+  if (elements.searchMessage) {
+    elements.searchMessage.textContent = "";
+  }
+
+  if (elements.message) {
+    elements.message.textContent = "";
+  }
 
   updateReaderProgress();
 }
@@ -824,24 +938,32 @@ function getReaderParagraphs() {
     .split(/\n[ \t]*\n+/);
 }
 
+/* =========================================================
+   RENDER READER TEXT
+   ========================================================= */
+
 function renderReaderText() {
   const { content } = getReaderElements();
+
   if (!content) return;
 
   content.replaceChildren();
-  content.classList.toggle("dark-mode", readerDarkMode);
   content.style.fontSize = `${readerFontSize}px`;
 
   const paragraphs = getReaderParagraphs();
 
   if (!paragraphs.length) {
     const p = document.createElement("p");
-    p.textContent = "There is no readable text available for this book yet.";
+
+    p.textContent =
+      "There is no readable text available for this book yet.";
+
     content.appendChild(p);
   } else {
     paragraphs.forEach((text) => {
       const p = document.createElement("p");
       p.textContent = text;
+
       content.appendChild(p);
     });
   }
@@ -851,16 +973,24 @@ function renderReaderText() {
   }
 
   content.scrollTop = savedReaderPosition;
+
   updateReaderProgress();
 }
 
+/* =========================================================
+   READER SEARCH
+   ========================================================= */
+
 function highlightReaderSearch() {
   const { content, searchMessage } = getReaderElements();
+
   if (!content) return;
 
   const previousScroll = content.scrollTop;
   const paragraphs = getReaderParagraphs();
+
   const query = readerSearchTerm.toLocaleLowerCase();
+
   let matches = 0;
 
   content.replaceChildren();
@@ -875,22 +1005,34 @@ function highlightReaderSearch() {
     }
 
     const lowerText = text.toLocaleLowerCase();
+
     let start = 0;
     let index = lowerText.indexOf(query);
 
     while (index !== -1) {
-      p.appendChild(document.createTextNode(text.slice(start, index)));
+      p.appendChild(
+        document.createTextNode(text.slice(start, index))
+      );
 
       const mark = document.createElement("mark");
-      mark.textContent = text.slice(index, index + readerSearchTerm.length);
+
+      mark.textContent = text.slice(
+        index,
+        index + readerSearchTerm.length
+      );
+
       p.appendChild(mark);
 
       start = index + readerSearchTerm.length;
       matches++;
+
       index = lowerText.indexOf(query, start);
     }
 
-    p.appendChild(document.createTextNode(text.slice(start)));
+    p.appendChild(
+      document.createTextNode(text.slice(start))
+    );
+
     content.appendChild(p);
   });
 
@@ -912,24 +1054,41 @@ function searchReader() {
 
 function clearReaderSearch() {
   const input = getReaderElements().searchInput;
+
   if (input) input.value = "";
 
   readerSearchTerm = "";
+
   highlightReaderSearch();
 }
 
+/* =========================================================
+   READER PROGRESS AND SAVING
+   ========================================================= */
+
 function updateReaderProgress() {
-  const { content, progressBar, progressText } = getReaderElements();
+  const {
+    content,
+    progressBar,
+    progressText
+  } = getReaderElements();
+
   if (!content) return;
 
-  const scrollable = content.scrollHeight - content.clientHeight;
+  const scrollable =
+    content.scrollHeight - content.clientHeight;
+
   const percent = scrollable > 0
     ? Math.round((content.scrollTop / scrollable) * 100)
     : 100;
 
   if (progressBar) {
     progressBar.style.width = `${percent}%`;
-    progressBar.setAttribute("aria-valuenow", String(percent));
+
+    progressBar.setAttribute(
+      "aria-valuenow",
+      String(percent)
+    );
   }
 
   if (progressText) {
@@ -939,6 +1098,7 @@ function updateReaderProgress() {
 
 function saveReaderPosition() {
   const { content } = getReaderElements();
+
   if (!content || !currentBook) return;
 
   savedReaderPosition = content.scrollTop;
@@ -949,7 +1109,7 @@ function saveReaderPosition() {
       String(savedReaderPosition)
     );
   } catch {
-    // Reader still works if local storage is unavailable.
+    // Reading continues even if local storage is unavailable.
   }
 
   updateReaderProgress();
@@ -957,17 +1117,28 @@ function saveReaderPosition() {
 
 function restoreReaderPosition(bookId) {
   const { content } = getReaderElements();
+
   if (!content) return;
 
   try {
-    const saved = localStorage.getItem(getReaderStorageKey(bookId));
-    savedReaderPosition = Math.max(0, Number(saved) || 0);
+    const saved = localStorage.getItem(
+      getReaderStorageKey(bookId)
+    );
+
+    savedReaderPosition = Math.max(
+      0,
+      Number(saved) || 0
+    );
   } catch {
     savedReaderPosition = 0;
   }
 
   content.scrollTop = savedReaderPosition;
 }
+
+/* =========================================================
+   OPEN AND READ A BOOK
+   ========================================================= */
 
 async function readBook(bookId) {
   if (!bookId) {
@@ -977,7 +1148,10 @@ async function readBook(bookId) {
 
   currentBook = allBooks.find(
     (book) => String(getBookId(book)) === String(bookId)
-  ) || { id: bookId, title: "Book" };
+  ) || {
+    id: bookId,
+    title: "Book"
+  };
 
   resetReader();
 
@@ -999,6 +1173,7 @@ async function readBook(bookId) {
     );
 
     const book = result.book || result;
+
     currentBook = book;
 
     if (elements.title) {
@@ -1006,6 +1181,7 @@ async function readBook(bookId) {
     }
 
     const readerAuthor = byId("readerAuthor");
+
     if (readerAuthor) {
       readerAuthor.textContent = getBookAuthor(book);
     }
@@ -1018,6 +1194,7 @@ async function readBook(bookId) {
     );
 
     const reading = result.reading || {};
+
     updateAccessStatus(reading);
 
     if (reading.mpesaNumber) {
@@ -1037,7 +1214,9 @@ async function readBook(bookId) {
     }
 
     restoreReaderPosition(getBookId(book));
+
     renderReaderText();
+
   } catch (error) {
     if (elements.message) {
       elements.message.textContent = error.message;
@@ -1059,48 +1238,73 @@ async function readBook(bookId) {
   }
 }
 
-/* -------------------- Reader toolbar -------------------- */
+/* =========================================================
+   READER TOOLBAR
+   ========================================================= */
 
 function setupReaderControls() {
   byId("readerDecreaseFont")?.addEventListener("click", () => {
     readerFontSize = Math.max(12, readerFontSize - 1);
 
     const content = byId("readerContent");
-    if (content) content.style.fontSize = `${readerFontSize}px`;
+
+    if (content) {
+      content.style.fontSize = `${readerFontSize}px`;
+    }
   });
 
   byId("readerIncreaseFont")?.addEventListener("click", () => {
     readerFontSize = Math.min(30, readerFontSize + 1);
 
     const content = byId("readerContent");
-    if (content) content.style.fontSize = `${readerFontSize}px`;
+
+    if (content) {
+      content.style.fontSize = `${readerFontSize}px`;
+    }
   });
 
   byId("readerThemeBtn")?.addEventListener("click", () => {
     readerDarkMode = !readerDarkMode;
 
-    byId("readerContent")?.classList.toggle(
-      "dark-mode",
+    const modal = byId("readerModal");
+    const button = byId("readerThemeBtn");
+
+    modal?.classList.toggle(
+      "reader-dark",
       readerDarkMode
     );
 
-    const button = byId("readerThemeBtn");
-
     if (button) {
-      button.textContent = readerDarkMode ? "Light mode" : "Dark mode";
-      button.setAttribute("aria-pressed", String(readerDarkMode));
+      button.textContent = readerDarkMode
+        ? "Light mode"
+        : "Dark mode";
+
+      button.setAttribute(
+        "aria-pressed",
+        String(readerDarkMode)
+      );
     }
   });
 
-  byId("readerSearchBtn")?.addEventListener("click", searchReader);
-  byId("readerClearSearch")?.addEventListener("click", clearReaderSearch);
+  byId("readerSearchBtn")?.addEventListener(
+    "click",
+    searchReader
+  );
 
-  byId("readerSearchInput")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      searchReader();
+  byId("readerClearSearch")?.addEventListener(
+    "click",
+    clearReaderSearch
+  );
+
+  byId("readerSearchInput")?.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchReader();
+      }
     }
-  });
+  );
 
   byId("readerTopBtn")?.addEventListener("click", () => {
     byId("readerContent")?.scrollTo({
@@ -1112,13 +1316,17 @@ function setupReaderControls() {
   const content = byId("readerContent");
 
   if (content) {
-    content.addEventListener("scroll", saveReaderPosition, {
-      passive: true
-    });
+    content.addEventListener(
+      "scroll",
+      saveReaderPosition,
+      { passive: true }
+    );
   }
 }
 
-/* -------------------- Reader access payment -------------------- */
+/* =========================================================
+   READER ACCESS PAYMENT
+   ========================================================= */
 
 async function handlePayment(event) {
   event.preventDefault();
@@ -1133,6 +1341,7 @@ async function handlePayment(event) {
       "Please sign in before requesting reader access.",
       "error"
     );
+
     openLogin();
     return;
   }
@@ -1155,13 +1364,13 @@ async function handlePayment(event) {
       "Enter your name, email, and M-Pesa transaction code.",
       "error"
     );
+
     return;
   }
 
   if (button) button.disabled = true;
 
   try {
-    // The existing backend contract accepts payerName and transactionCode.
     const result = await api("/payments", {
       method: "POST",
       body: JSON.stringify({
@@ -1178,14 +1387,18 @@ async function handlePayment(event) {
     );
 
     form.reset();
+
   } catch (error) {
     setMessage(message, error.message, "error");
+
   } finally {
     if (button) button.disabled = false;
   }
 }
 
-/* -------------------- Author manuscript submission -------------------- */
+/* =========================================================
+   AUTHOR MANUSCRIPT SUBMISSION
+   ========================================================= */
 
 async function handleAuthorSubmission(event) {
   event.preventDefault();
@@ -1200,6 +1413,7 @@ async function handleAuthorSubmission(event) {
       "Please sign in before submitting your manuscript.",
       "error"
     );
+
     openLogin();
     return;
   }
@@ -1207,7 +1421,12 @@ async function handleAuthorSubmission(event) {
   const file = byId("manuscript")?.files?.[0];
 
   if (!file) {
-    setMessage(message, "Please select your manuscript file.", "error");
+    setMessage(
+      message,
+      "Please select your manuscript file.",
+      "error"
+    );
+
     return;
   }
 
@@ -1216,54 +1435,111 @@ async function handleAuthorSubmission(event) {
   if (file.size > maximumBytes) {
     setMessage(
       message,
-      "The manuscript exceeds 20 MB. Please select a smaller file.",
+      "Your manuscript exceeds 20 MB. Please select a smaller file.",
       "error"
     );
+
     return;
   }
 
-  if (button) button.disabled = true;
+  const originalButtonText =
+    button?.textContent || "Submit for Review";
+
+  const controller = new AbortController();
+
+  const timeout = window.setTimeout(() => {
+    controller.abort();
+  }, 180000);
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Uploading manuscript...";
+  }
+
+  setMessage(
+    message,
+    "Your manuscript is being uploaded. Please keep this page open.",
+    "info"
+  );
 
   try {
     const formData = new FormData(form);
 
     const result = await api("/authors/submissions", {
       method: "POST",
-      body: formData
+      body: formData,
+      signal: controller.signal
     });
 
     setMessage(
       message,
       result.message ||
-        "Your manuscript has been submitted for review.",
+        "Your manuscript has been submitted successfully for review.",
       "success"
     );
 
     form.reset();
+
   } catch (error) {
-    setMessage(message, error.message, "error");
+    setMessage(
+      message,
+      `${error.message} If you are unsure whether the upload reached us, check with the administrator before submitting again.`,
+      "error"
+    );
+
   } finally {
-    if (button) button.disabled = false;
+    window.clearTimeout(timeout);
+
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalButtonText;
+    }
   }
 }
 
-/* -------------------- Forms -------------------- */
+/* =========================================================
+   FORM EVENT SETUP
+   ========================================================= */
 
 function setupForms() {
-  byId("loginForm")?.addEventListener("submit", handleLogin);
-  byId("registerForm")?.addEventListener("submit", handleRegister);
-  byId("paymentForm")?.addEventListener("submit", handlePayment);
-  byId("authorForm")?.addEventListener("submit", handleAuthorSubmission);
+  byId("loginForm")?.addEventListener(
+    "submit",
+    handleLogin
+  );
+
+  byId("registerForm")?.addEventListener(
+    "submit",
+    handleRegister
+  );
+
+  byId("paymentForm")?.addEventListener(
+    "submit",
+    handlePayment
+  );
+
+  byId("authorForm")?.addEventListener(
+    "submit",
+    handleAuthorSubmission
+  );
 }
 
-/* -------------------- Footer -------------------- */
+/* =========================================================
+   FOOTER
+   ========================================================= */
 
 function setupFooter() {
   const year = byId("currentYear");
-  if (year) year.textContent = String(new Date().getFullYear());
+
+  if (year) {
+    year.textContent = String(
+      new Date().getFullYear()
+    );
+  }
 }
 
-/* -------------------- Start the application -------------------- */
+/* =========================================================
+   APPLICATION STARTUP
+   ========================================================= */
 
 document.addEventListener("DOMContentLoaded", async () => {
   setupModalEvents();

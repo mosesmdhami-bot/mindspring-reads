@@ -4,7 +4,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <meta name="description" content="Discover and read books on personal development, finance, fiction, spirituality, technology and education with MindSpring Reads.">
     <meta name="theme-color" content="#123c32">
 
@@ -12,14 +11,11 @@
 
     <link rel="stylesheet" href="/style.css">
 
-    <!-- Reader layout corrections -->
     <style>
-        /* Ensure hidden modals stay hidden even if other CSS conflicts. */
-        .modal[hidden] {
+        .modal[hidden], #readerModal[hidden] {
             display: none !important;
         }
 
-        /* Reader modal: centered, scrollable and responsive. */
         #readerModal {
             position: fixed;
             inset: 0;
@@ -33,17 +29,12 @@
             background: rgba(12, 25, 20, 0.78);
         }
 
-        #readerModal[hidden] {
-            display: none !important;
-        }
-
         #readerModal > .modal-content.reader-content {
             position: relative;
             display: flex;
             flex-direction: column;
             width: min(100%, 1000px);
             max-width: 1000px;
-            height: auto;
             max-height: calc(100vh - 40px);
             min-height: 0;
             margin: auto;
@@ -56,7 +47,6 @@
             box-shadow: 0 20px 70px rgba(0, 0, 0, 0.3);
         }
 
-        /* Book heading stays separate from the reading text. */
         #readerModal .reader-header {
             position: relative;
             display: flex;
@@ -67,7 +57,6 @@
             padding: 26px 32px 20px;
             border-bottom: 1px solid #e4e6dc;
             background: #edf0e7;
-            box-sizing: border-box;
         }
 
         #readerModal .reader-heading {
@@ -89,7 +78,6 @@
             font-size: clamp(22px, 3vw, 34px);
             line-height: 1.3;
             overflow-wrap: anywhere;
-            word-break: normal;
         }
 
         #readerModal #readerMessage {
@@ -109,9 +97,7 @@
             cursor: pointer;
         }
 
-        /* Toolbar wraps rather than overlapping on narrow screens. */
         #readerModal .reader-toolbar {
-            position: relative;
             display: flex;
             flex-wrap: wrap;
             align-items: center;
@@ -120,7 +106,6 @@
             padding: 14px 24px;
             border-bottom: 1px solid #e4e6dc;
             background: #ffffff;
-            box-sizing: border-box;
         }
 
         #readerModal .reader-font-controls {
@@ -151,7 +136,6 @@
             flex: 0 0 auto;
             padding: 12px 32px 4px;
             background: #fffdf8;
-            box-sizing: border-box;
         }
 
         #readerModal .reader-progress-track {
@@ -182,11 +166,6 @@
             overflow-wrap: anywhere;
         }
 
-        /*
-         * Critical fix:
-         * The manuscript is normal document text, not a positioned overlay.
-         * Its height is determined by the text and it scrolls inside the reader.
-         */
         #readerModal article#readerContent.reader-paper {
             position: relative;
             display: block;
@@ -218,7 +197,6 @@
             overscroll-behavior: contain;
         }
 
-        /* Keep long lines, URLs and unbroken text inside the page. */
         #readerModal article#readerContent *,
         #readerModal article#readerContent {
             max-width: 100%;
@@ -232,7 +210,6 @@
         }
 
         #readerModal .reader-footer {
-            position: relative;
             display: flex;
             flex-wrap: wrap;
             align-items: center;
@@ -242,7 +219,6 @@
             padding: 14px 28px;
             border-top: 1px solid #e4e6dc;
             background: #ffffff;
-            box-sizing: border-box;
         }
 
         #readerModal .reader-footer span {
@@ -254,7 +230,6 @@
             cursor: pointer;
         }
 
-        /* Reader dark mode. */
         #readerModal.reader-dark > .modal-content.reader-content,
         #readerModal.reader-dark article#readerContent.reader-paper {
             background: #202923;
@@ -283,7 +258,6 @@
             background: #48554b;
         }
 
-        /* Screen-reader-only labels. */
         .sr-only {
             position: absolute !important;
             width: 1px !important;
@@ -296,7 +270,6 @@
             border: 0 !important;
         }
 
-        /* Mobile layout. */
         @media (max-width: 600px) {
             #readerModal {
                 padding: 6px;
@@ -377,14 +350,9 @@
         MindSpring <span>Reads</span>
     </a>
 
-    <button
-        class="mobile-menu-toggle"
-        id="mobileMenuBtn"
-        type="button"
-        aria-label="Toggle navigation"
-        aria-expanded="false"
-        aria-controls="primaryNavigation"
-    >☰</button>
+    <button class="mobile-menu-toggle" id="mobileMenuBtn"
+        type="button" aria-label="Toggle navigation"
+        aria-expanded="false" aria-controls="primaryNavigation">☰</button>
 
     <nav class="nav-links" id="primaryNavigation" aria-label="Main navigation">
         <a href="#home">Home</a>
@@ -407,11 +375,7 @@
     <section class="hero" id="home">
         <div class="hero-content">
             <p class="hero-eyebrow">YOUR NEXT CHAPTER STARTS HERE</p>
-
-            <h1>
-                Discover Knowledge.<br>
-                <span>Grow Your Mind.</span>
-            </h1>
+            <h1>Discover Knowledge.<br><span>Grow Your Mind.</span></h1>
 
             <p>
                 Explore books that inspire personal growth, improve financial
@@ -439,27 +403,22 @@
                 <span class="category-icon" aria-hidden="true">🌱</span>
                 <span>Self-help</span>
             </button>
-
             <button class="category-card" type="button" data-category="Finance">
                 <span class="category-icon" aria-hidden="true">💰</span>
                 <span>Finance</span>
             </button>
-
             <button class="category-card" type="button" data-category="Fiction">
                 <span class="category-icon" aria-hidden="true">📚</span>
                 <span>Fiction</span>
             </button>
-
             <button class="category-card" type="button" data-category="Spirituality">
                 <span class="category-icon" aria-hidden="true">✨</span>
                 <span>Spirituality</span>
             </button>
-
             <button class="category-card" type="button" data-category="Academic">
                 <span class="category-icon" aria-hidden="true">🎓</span>
                 <span>Academic</span>
             </button>
-
             <button class="category-card" type="button" data-category="Technology">
                 <span class="category-icon" aria-hidden="true">💻</span>
                 <span>Technology</span>
@@ -478,13 +437,8 @@
             <label for="bookSearch">Search the library</label>
 
             <div class="book-search-controls">
-                <input
-                    id="bookSearch"
-                    type="search"
-                    placeholder="Search by title or author..."
-                    autocomplete="off"
-                >
-
+                <input id="bookSearch" type="search"
+                    placeholder="Search by title or author..." autocomplete="off">
                 <button id="bookSearchBtn" class="btn" type="button">Search</button>
                 <button id="clearBookSearchBtn" type="button">Clear</button>
             </div>
@@ -540,12 +494,10 @@
         <div class="section-heading">
             <p class="section-eyebrow">SHARE YOUR KNOWLEDGE</p>
             <h2>Are You an Author?</h2>
-
             <p>
                 Share your work with readers. Submit your manuscript
                 for review by the MindSpring Reads team.
             </p>
-
             <button id="authorBtn" class="btn" type="button">Submit a Book</button>
         </div>
     </section>
@@ -554,30 +506,19 @@
 
 <footer class="site-footer">
     <div class="footer-content">
-        <a href="#home" class="logo">
-            MindSpring <span>Reads</span>
-        </a>
-
+        <a href="#home" class="logo">MindSpring <span>Reads</span></a>
         <p>Read. Learn. Grow.</p>
-
-        <p>
-            Contact:
-            <a href="mailto:mosesmdhami@gmail.com">mosesmdhami@gmail.com</a>
-        </p>
-
-        <p>
-            &copy; <span id="currentYear"></span>
-            MindSpring Reads. All rights reserved.
-        </p>
+        <p>Contact: <a href="mailto:mosesmdhami@gmail.com">mosesmdhami@gmail.com</a></p>
+        <p>&copy; <span id="currentYear"></span> MindSpring Reads. All rights reserved.</p>
     </div>
 </footer>
 
 <!-- LOGIN MODAL -->
 <div class="modal" id="loginModal" role="dialog"
-     aria-modal="true" aria-labelledby="loginModalTitle" hidden>
+    aria-modal="true" aria-labelledby="loginModalTitle" hidden>
     <div class="modal-content">
         <button class="close-modal" type="button"
-                data-close="loginModal" aria-label="Close login">&times;</button>
+            data-close="loginModal" aria-label="Close login">&times;</button>
 
         <p class="section-eyebrow">WELCOME BACK</p>
         <h2 id="loginModalTitle">Login to MindSpring Reads</h2>
@@ -585,18 +526,17 @@
         <form id="loginForm">
             <label for="loginEmail">Email address</label>
             <input id="loginEmail" name="email" type="email"
-                   autocomplete="email" required>
+                autocomplete="email" required>
 
             <label for="loginPassword">Password</label>
             <input id="loginPassword" name="password" type="password"
-                   autocomplete="current-password" required>
+                autocomplete="current-password" required>
 
             <button type="submit" class="btn">Login</button>
             <p id="loginMessage" role="status" aria-live="polite"></p>
         </form>
 
-        <p>
-            Don't have an account?
+        <p>Don't have an account?
             <button id="switchToRegister" type="button">Register</button>
         </p>
     </div>
@@ -604,10 +544,10 @@
 
 <!-- REGISTER MODAL -->
 <div class="modal" id="registerModal" role="dialog"
-     aria-modal="true" aria-labelledby="registerModalTitle" hidden>
+    aria-modal="true" aria-labelledby="registerModalTitle" hidden>
     <div class="modal-content">
         <button class="close-modal" type="button"
-                data-close="registerModal" aria-label="Close registration">&times;</button>
+            data-close="registerModal" aria-label="Close registration">&times;</button>
 
         <p class="section-eyebrow">JOIN OUR COMMUNITY</p>
         <h2 id="registerModalTitle">Create Your Account</h2>
@@ -615,16 +555,16 @@
         <form id="registerForm">
             <label for="registerName">Full name</label>
             <input id="registerName" name="name" type="text"
-                   autocomplete="name" minlength="2" maxlength="80" required>
+                autocomplete="name" minlength="2" maxlength="80" required>
 
             <label for="registerEmail">Email address</label>
             <input id="registerEmail" name="email" type="email"
-                   autocomplete="email" required>
+                autocomplete="email" required>
 
             <label for="registerPassword">Password</label>
             <input id="registerPassword" name="password" type="password"
-                   autocomplete="new-password" minlength="10"
-                   aria-describedby="passwordHelp" required>
+                autocomplete="new-password" minlength="10"
+                aria-describedby="passwordHelp" required>
 
             <p id="passwordHelp" class="form-help">Use at least 10 characters.</p>
 
@@ -632,8 +572,7 @@
             <p id="registerMessage" role="status" aria-live="polite"></p>
         </form>
 
-        <p>
-            Already registered?
+        <p>Already registered?
             <button id="switchToLogin" type="button">Login</button>
         </p>
     </div>
@@ -641,10 +580,10 @@
 
 <!-- PAYMENT MODAL -->
 <div class="modal" id="paymentModal" role="dialog"
-     aria-modal="true" aria-labelledby="paymentModalTitle" hidden>
+    aria-modal="true" aria-labelledby="paymentModalTitle" hidden>
     <div class="modal-content">
         <button class="close-modal" type="button"
-                data-close="paymentModal" aria-label="Close payment form">&times;</button>
+            data-close="paymentModal" aria-label="Close payment form">&times;</button>
 
         <p class="section-eyebrow">YEARLY READER ACCESS</p>
         <h2 id="paymentModalTitle">Request Reader Access</h2>
@@ -662,16 +601,16 @@
         <form id="paymentForm">
             <label for="payerName">Your full name</label>
             <input id="payerName" name="payerName" type="text"
-                   autocomplete="name" required>
+                autocomplete="name" required>
 
             <label for="payerEmail">Your email</label>
             <input id="payerEmail" name="payerEmail" type="email"
-                   autocomplete="email" required>
+                autocomplete="email" required>
 
             <label for="transactionCode">M-Pesa transaction code</label>
             <input id="transactionCode" name="transactionCode"
-                   type="text" maxlength="20" autocomplete="off"
-                   autocapitalize="characters" required>
+                type="text" maxlength="20" autocomplete="off"
+                autocapitalize="characters" required>
 
             <button type="submit" class="btn">Submit Payment Details</button>
             <p id="paymentMessage" role="status" aria-live="polite"></p>
@@ -681,10 +620,10 @@
 
 <!-- AUTHOR SUBMISSION MODAL -->
 <div class="modal" id="authorModal" role="dialog"
-     aria-modal="true" aria-labelledby="authorModalTitle" hidden>
+    aria-modal="true" aria-labelledby="authorModalTitle" hidden>
     <div class="modal-content">
         <button class="close-modal" type="button"
-                data-close="authorModal" aria-label="Close author form">&times;</button>
+            data-close="authorModal" aria-label="Close author form">&times;</button>
 
         <p class="section-eyebrow">PUBLISH WITH US</p>
         <h2 id="authorModalTitle">Submit Your Book</h2>
@@ -692,15 +631,15 @@
         <form id="authorForm">
             <label for="authorName">Author name</label>
             <input id="authorName" name="authorName" type="text"
-                   minlength="2" maxlength="100" required>
+                minlength="2" maxlength="100" required>
 
             <label for="authorEmail">Email address</label>
             <input id="authorEmail" name="email" type="email"
-                   autocomplete="email" required>
+                autocomplete="email" required>
 
             <label for="bookTitle">Book title</label>
             <input id="bookTitle" name="title" type="text"
-                   maxlength="180" required>
+                maxlength="180" required>
 
             <label for="bookCategory">Category</label>
             <select id="bookCategory" name="category" required>
@@ -715,13 +654,12 @@
 
             <label for="bookDescription">Book description</label>
             <textarea id="bookDescription" name="description"
-                      rows="4" minlength="10" maxlength="2000"
-                      required></textarea>
+                rows="4" minlength="10" maxlength="2000" required></textarea>
 
             <label for="manuscript">Manuscript file</label>
             <input id="manuscript" name="manuscript" type="file"
-                   accept=".pdf,.doc,.docx,.txt,.md,.csv,.rtf,.odt,.epub,.ppt,.pptx,.xls,.xlsx,.ods,.odp"
-                   required>
+                accept=".pdf,.doc,.docx,.txt,.md,.csv,.rtf,.odt,.epub,.ppt,.pptx,.xls,.xlsx,.ods,.odp"
+                required>
 
             <p class="form-help">
                 Maximum file size: 20 MB. The server determines which
@@ -736,7 +674,7 @@
 
 <!-- PROFESSIONAL READER MODAL -->
 <div class="modal reader-modal" id="readerModal" role="dialog"
-     aria-modal="true" aria-labelledby="readerTitle" hidden>
+    aria-modal="true" aria-labelledby="readerTitle" hidden>
     <div class="modal-content reader-content">
 
         <div class="reader-header">
@@ -747,16 +685,15 @@
             </div>
 
             <button class="close-modal" type="button"
-                    data-close="readerModal" aria-label="Close reader">&times;</button>
+                data-close="readerModal" aria-label="Close reader">&times;</button>
         </div>
 
         <div class="reader-toolbar" role="toolbar" aria-label="Reading controls">
             <div class="reader-font-controls">
                 <button id="readerDecreaseFont" type="button"
-                        aria-label="Decrease text size" title="Decrease text size">A−</button>
-
+                    aria-label="Decrease text size" title="Decrease text size">A−</button>
                 <button id="readerIncreaseFont" type="button"
-                        aria-label="Increase text size" title="Increase text size">A+</button>
+                    aria-label="Increase text size" title="Increase text size">A+</button>
             </div>
 
             <button id="readerThemeBtn" type="button" aria-pressed="false">
@@ -768,7 +705,7 @@
                     Search within this book
                 </label>
                 <input id="readerSearchInput" type="search"
-                       placeholder="Find in this book..." autocomplete="off">
+                    placeholder="Find in this book..." autocomplete="off">
             </div>
 
             <button id="readerSearchBtn" type="button">Search</button>
@@ -776,10 +713,9 @@
         </div>
 
         <div class="reader-progress-area">
-            <div class="reader-progress-track"
-                 role="progressbar" aria-label="Reading progress"
-                 aria-valuemin="0" aria-valuemax="100"
-                 aria-valuenow="0" id="readerProgressTrack">
+            <div class="reader-progress-track" role="progressbar"
+                aria-label="Reading progress" aria-valuemin="0"
+                aria-valuemax="100" aria-valuenow="0" id="readerProgressTrack">
                 <div id="readerProgressBar"></div>
             </div>
             <p id="readerProgressText">Reading progress: 0%</p>
@@ -801,10 +737,10 @@
 
 <!-- GENERAL MESSAGE MODAL -->
 <div class="modal" id="messageModal" role="dialog"
-     aria-modal="true" aria-labelledby="messageTitle" hidden>
+    aria-modal="true" aria-labelledby="messageTitle" hidden>
     <div class="modal-content">
         <button class="close-modal" type="button"
-                data-close="messageModal" aria-label="Close message">&times;</button>
+            data-close="messageModal" aria-label="Close message">&times;</button>
 
         <h2 id="messageTitle">MindSpring Reads</h2>
         <p id="messageText"></p>
@@ -812,183 +748,6 @@
         <button class="btn" type="button" data-close="messageModal">OK</button>
     </div>
 </div>
-
-<script>
-/*
- * Reader controls are initialized independently of the main application.
- * These handlers use the existing reader element IDs.
- */
-(() => {
-    const reader = document.getElementById("readerModal");
-    const paper = document.getElementById("readerContent");
-
-    if (!reader || !paper) return;
-
-    let fontSize = 17;
-
-    const decreaseButton = document.getElementById("readerDecreaseFont");
-    const increaseButton = document.getElementById("readerIncreaseFont");
-    const themeButton = document.getElementById("readerThemeBtn");
-    const topButton = document.getElementById("readerTopBtn");
-    const searchInput = document.getElementById("readerSearchInput");
-    const searchButton = document.getElementById("readerSearchBtn");
-    const clearSearchButton = document.getElementById("readerClearSearch");
-    const searchMessage = document.getElementById("readerSearchMessage");
-    const progressBar = document.getElementById("readerProgressBar");
-    const progressTrack = document.getElementById("readerProgressTrack");
-    const progressText = document.getElementById("readerProgressText");
-
-    if (decreaseButton) {
-        decreaseButton.addEventListener("click", () => {
-            fontSize = Math.max(12, fontSize - 1);
-            paper.style.fontSize = `${fontSize}px`;
-        });
-    }
-
-    if (increaseButton) {
-        increaseButton.addEventListener("click", () => {
-            fontSize = Math.min(30, fontSize + 1);
-            paper.style.fontSize = `${fontSize}px`;
-        });
-    }
-
-    if (themeButton) {
-        themeButton.addEventListener("click", () => {
-            const dark = reader.classList.toggle("reader-dark");
-            themeButton.setAttribute("aria-pressed", String(dark));
-            themeButton.textContent = dark ? "Light mode" : "Dark mode";
-        });
-    }
-
-    if (topButton) {
-        topButton.addEventListener("click", () => {
-            paper.scrollTo({ top: 0, behavior: "smooth" });
-        });
-    }
-
-    function updateProgress() {
-        const scrollableHeight = paper.scrollHeight - paper.clientHeight;
-        const percent = scrollableHeight > 0
-            ? Math.round((paper.scrollTop / scrollableHeight) * 100)
-            : 100;
-
-        if (progressBar) progressBar.style.width = `${percent}%`;
-        if (progressTrack) progressTrack.setAttribute("aria-valuenow", String(percent));
-        if (progressText) progressText.textContent = `Reading progress: ${percent}%`;
-    }
-
-    paper.addEventListener("scroll", updateProgress);
-
-    /*
-     * Search is performed using text nodes so book content is not
-     * reinterpreted as HTML.
-     */
-    function searchBook() {
-        if (!searchInput || !searchMessage) return;
-
-        const query = searchInput.value.trim();
-
-        if (!query) {
-            searchMessage.textContent = "Enter a word or phrase to search.";
-            return;
-        }
-
-        const text = paper.textContent || "";
-        const position = text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
-
-        if (position === -1) {
-            searchMessage.textContent = "No matching text found.";
-            return;
-        }
-
-        /*
-         * Find the text in the rendered document without replacing
-         * manuscript content or creating unsafe HTML.
-         */
-        const walker = document.createTreeWalker(paper, NodeFilter.SHOW_TEXT);
-        let offset = 0;
-        let node;
-        let found = false;
-
-        while ((node = walker.nextNode())) {
-            const nodeText = node.nodeValue || "";
-            const localPosition = nodeText.toLocaleLowerCase()
-                .indexOf(query.toLocaleLowerCase());
-
-            if (localPosition !== -1) {
-                const range = document.createRange();
-                range.setStart(node, localPosition);
-                range.setEnd(node, localPosition + query.length);
-
-                const parent = node.parentElement;
-                if (parent) {
-                    parent.scrollIntoView({ behavior: "smooth", block: "center" });
-                }
-
-                const selection = window.getSelection();
-                if (selection) {
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                }
-
-                found = true;
-                break;
-            }
-
-            offset += nodeText.length;
-        }
-
-        searchMessage.textContent = found
-            ? `Found "${query}". The matching text is selected.`
-            : "Matching text exists, but could not be positioned.";
-    }
-
-    if (searchButton) searchButton.addEventListener("click", searchBook);
-
-    if (searchInput) {
-        searchInput.addEventListener("keydown", event => {
-            if (event.key === "Enter") {
-                event.preventDefault();
-                searchBook();
-            }
-        });
-    }
-
-    if (clearSearchButton) {
-        clearSearchButton.addEventListener("click", () => {
-            if (searchInput) searchInput.value = "";
-            if (searchMessage) searchMessage.textContent = "";
-            const selection = window.getSelection();
-            if (selection) selection.removeAllRanges();
-        });
-    }
-
-    /*
-     * Recalculate progress whenever the modal opens or the book content
-     * changes. A MutationObserver also handles text inserted by script.js.
-     */
-    const observer = new MutationObserver(() => {
-        updateProgress();
-    });
-
-    observer.observe(paper, {
-        childList: true,
-        subtree: true,
-        characterData: true
-    });
-
-    const modalObserver = new MutationObserver(() => {
-        if (!reader.hidden) updateProgress();
-    });
-
-    modalObserver.observe(reader, {
-        attributes: true,
-        attributeFilter: ["hidden", "class"]
-    });
-
-    updateProgress();
-})();
-</script>
 
 </body>
 </html>
