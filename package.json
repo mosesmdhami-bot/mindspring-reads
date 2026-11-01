@@ -2,7 +2,7 @@
   "name": "mindspring-reads",
   "version": "1.0.0",
   "private": true,
-  "description": "MindSpring Reads secure reading platform with manual M-Pesa approval",
+  "description": "MindSpring Reads secure reading platform with PostgreSQL, Supabase Storage and manual M-Pesa approval",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,17 +12,16 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.57.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^13.0.3",
-    "connect-sqlite3": "^0.9.18",
+    "connect-pg-simple": "^10.0.0",
     "dotenv": "^16.6.1",
     "express": "^4.22.3",
     "express-rate-limit": "^7.5.1",
     "express-session": "^1.19.0",
     "helmet": "^8.3.0",
-    "mammoth": "^1.13.0",
     "multer": "^2.5.0",
     "pdf-parse": "^1.1.4",
-    "word-extractor": "^1.0.4"
+    "pg": "^8.23.1"
   }
 }

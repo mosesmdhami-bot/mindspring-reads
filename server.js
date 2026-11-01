@@ -1,138 +1,77 @@
+'use strict';
 
 require('dotenv').config();
 
 const express = require('express');
 const session = require('express-session');
-const SQLiteStoreFactory = require('connect-sqlite3');
-const Database = require('better-sqlite3');
+const PgSession = require('connect-pg-simple')(session);
+const { Pool } = require('pg');
+const { createClient } = require('@supabase/supabase-js');
 const bcrypt = require('bcryptjs');
 const helmet = require('helmet');
 const multer = require('multer');
 const rateLimitPackage = require('express-rate-limit');
 const pdfParse = require('pdf-parse');
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
+const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'mindspring-books';
 
-const DB_FILE = path.resolve(
-  ROOT,
-  process.env.DATABASE_FILE || './data/mindspring.sqlite'
-);
-
-const UPLOAD_DIR = path.resolve(
-  ROOT,
-  process.env.UPLOAD_DIR || './uploads'
-);
-
-const COVER_DIR = path.join(UPLOAD_DIR, 'covers');
-const MANUSCRIPT_DIR = path.join(UPLOAD_DIR, 'manuscripts');
-
-for (const dir of [
-  path.dirname(DB_FILE),
-  UPLOAD_DIR,
-  COVER_DIR,
-  MANUSCRIPT_DIR
+// Required environment variables.
+for (const key of [
+  'DATABASE_URL',
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SESSION_SECRET',
+  'ADMIN_EMAIL',
+  'ADMIN_PASSWORD'
 ]) {
-  fs.mkdirSync(dir, { recursive: true });
+  if (!process.env[key]) {
+    console.error(`SETUP ERROR: Missing required environment variable ${key}.`);
+    process.exit(1);
+  }
 }
 
-if (!process.env.SESSION_SECRET ||
-    process.env.SESSION_SECRET.length < 32) {
+if (process.env.SESSION_SECRET.length < 32) {
   console.error('SETUP ERROR: SESSION_SECRET must be at least 32 characters.');
   process.exit(1);
 }
 
-if (!process.env.ADMIN_EMAIL ||
-    !process.env.ADMIN_PASSWORD ||
-    process.env.ADMIN_PASSWORD.startsWith('CHANGE-')) {
-  console.error('SETUP ERROR: Configure ADMIN_EMAIL and ADMIN_PASSWORD in .env.');
+if (process.env.ADMIN_PASSWORD.startsWith('CHANGE-')) {
+  console.error('SETUP ERROR: Change ADMIN_PASSWORD in Render Environment.');
   process.exit(1);
 }
 
-const db = new Database(DB_FILE);
+// PostgreSQL connection.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: Number(process.env.PG_POOL_MAX || 10),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 15000
+});
 
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+pool.on('error', error => {
+  console.error('Unexpected PostgreSQL pool error:', error.message);
+});
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  email TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'reader',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+// Supabase Storage connection.
+// The service-role key must remain on the server.
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  }
 );
-
-CREATE TABLE IF NOT EXISTS books (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT NOT NULL,
-  author TEXT NOT NULL,
-  category TEXT NOT NULL,
-  description TEXT NOT NULL,
-  content TEXT NOT NULL DEFAULT '',
-  cover_path TEXT,
-  published INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS reads (
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-  first_read_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY(user_id, book_id)
-);
-
-CREATE TABLE IF NOT EXISTS payments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  amount_kes INTEGER NOT NULL,
-  transaction_code TEXT NOT NULL UNIQUE,
-  payer_name TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  reviewed_at TEXT,
-  reviewed_by INTEGER REFERENCES users(id),
-  admin_note TEXT
-);
-
-CREATE TABLE IF NOT EXISTS subscriptions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  starts_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  payment_id INTEGER NOT NULL REFERENCES payments(id),
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS author_submissions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  author_name TEXT NOT NULL,
-  email TEXT NOT NULL,
-  title TEXT NOT NULL,
-  category TEXT NOT NULL,
-  description TEXT NOT NULL,
-  manuscript_path TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  reviewed_at TEXT,
-  reviewed_by INTEGER REFERENCES users(id),
-  admin_note TEXT
-);
-`);
-
-// Safe migration for existing databases.
-const bookColumns = db.prepare('PRAGMA table_info(books)').all();
-
-if (!bookColumns.some(column => column.name === 'manuscript_path')) {
-  db.exec('ALTER TABLE books ADD COLUMN manuscript_path TEXT');
-}
 
 const categories = [
   'Self-help',
@@ -144,37 +83,17 @@ const categories = [
 ];
 
 const allowedManuscripts = new Set([
-  '.txt', '.md', '.pdf', '.doc', '.docx',
-  '.rtf', '.odt', '.epub', '.ppt', '.pptx',
-  '.xls', '.xlsx', '.csv', '.ods', '.odp'
+  '.txt', '.md', '.pdf', '.doc', '.docx', '.rtf', '.odt', '.epub',
+  '.ppt', '.pptx', '.xls', '.xlsx', '.csv', '.ods', '.odp'
 ]);
 
 const allowedCovers = new Set([
   '.jpg', '.jpeg', '.png', '.webp'
 ]);
 
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    if (file.fieldname === 'cover') {
-      return cb(null, COVER_DIR);
-    }
-
-    if (file.fieldname === 'manuscript') {
-      return cb(null, MANUSCRIPT_DIR);
-    }
-
-    cb(new Error('Unexpected upload field.'));
-  },
-
-  filename(req, file, cb) {
-    const ext = path.extname(file.originalname || '').toLowerCase();
-
-    cb(
-      null,
-      crypto.randomBytes(16).toString('hex') + ext
-    );
-  }
-});
+// Keep uploaded files in memory temporarily.
+// They are uploaded to Supabase Storage, not Render's local disk.
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -182,27 +101,24 @@ const upload = multer({
     fileSize: 20 * 1024 * 1024,
     files: 2
   },
-
   fileFilter(req, file, cb) {
     const ext = path.extname(file.originalname || '').toLowerCase();
 
     if (file.fieldname === 'cover') {
-      if (allowedCovers.has(ext)) return cb(null, true);
-
-      return cb(new Error(
-        'Cover must be JPG, JPEG, PNG or WEBP.'
-      ));
+      return allowedCovers.has(ext)
+        ? cb(null, true)
+        : cb(new Error('Cover must be JPG, JPEG, PNG or WEBP.'));
     }
 
     if (file.fieldname === 'manuscript') {
-      if (allowedManuscripts.has(ext)) return cb(null, true);
-
-      return cb(new Error(
-        'Unsupported manuscript format. Allowed: TXT, MD, PDF, DOC, DOCX, RTF, ODT, EPUB, PPT, PPTX, XLS, XLSX, CSV, ODS and ODP.'
-      ));
+      return allowedManuscripts.has(ext)
+        ? cb(null, true)
+        : cb(new Error(
+            'Unsupported manuscript format. Allowed: TXT, MD, PDF, DOC, DOCX, RTF, ODT, EPUB, PPT, PPTX, XLS, XLSX, CSV, ODS and ODP.'
+          ));
     }
 
-    cb(new Error('Unexpected upload field.'));
+    return cb(new Error('Unexpected upload field.'));
   }
 });
 
@@ -222,38 +138,47 @@ const paymentLimiter = rateLimit({
   legacyHeaders: false
 });
 
+// Express configuration.
 app.disable('x-powered-by');
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '100kb' }));
+app.set('trust proxy', 1);
+
+app.use(helmet({
+  contentSecurityPolicy: false
+}));
+
+app.use(express.json({
+  limit: '100kb'
+}));
+
 app.use(express.urlencoded({
   extended: false,
   limit: '100kb'
 }));
 
-const SQLiteStore = SQLiteStoreFactory(session);
-
+// PostgreSQL session store.
 app.use(session({
   name: 'msr.sid',
   secret: process.env.SESSION_SECRET,
-
-  store: new SQLiteStore({
-    db: 'sessions.sqlite',
-    dir: path.dirname(DB_FILE)
+  store: new PgSession({
+    pool,
+    tableName: 'session',
+    createTableIfMissing: false
   }),
-
   resave: false,
   saveUninitialized: false,
-
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.COOKIE_SECURE === 'true',
+    secure:
+      process.env.COOKIE_SECURE === 'true' ||
+      process.env.NODE_ENV === 'production',
     maxAge: 7 * 24 * 60 * 60 * 1000
   }
 }));
 
+// Helpers.
 const safeUser = user => user ? ({
-  id: user.id,
+  id: Number(user.id),
   name: user.name,
   email: user.email,
   role: user.role
@@ -269,58 +194,158 @@ function requireUser(req, res, next) {
   next();
 }
 
-function requireAdmin(req, res, next) {
-  if (!req.session.userId) {
-    return res.status(401).json({
-      error: 'Please log in as administrator.'
-    });
-  }
+async function requireAdmin(req, res, next) {
+  try {
+    if (!req.session.userId) {
+      return res.status(401).json({
+        error: 'Please log in as administrator.'
+      });
+    }
 
-  const admin = db.prepare(
-    'SELECT id,name,email,role FROM users WHERE id=?'
-  ).get(req.session.userId);
+    const result = await pool.query(
+      'SELECT id,name,email,role FROM users WHERE id=$1',
+      [req.session.userId]
+    );
 
-  if (!admin || admin.role !== 'admin') {
-    return res.status(403).json({
-      error: 'Administrator access required.'
-    });
-  }
+    const admin = result.rows[0];
 
-  req.admin = admin;
-  next();
-}
+    if (!admin || admin.role !== 'admin') {
+      return res.status(403).json({
+        error: 'Administrator access required.'
+      });
+    }
 
-function removeFile(filePath) {
-  if (!filePath) return;
-
-  const resolved = path.resolve(filePath);
-  const uploadRoot = path.resolve(UPLOAD_DIR) + path.sep;
-
-  if (resolved.startsWith(uploadRoot)) {
-    fs.unlink(resolved, error => {
-      if (error && error.code !== 'ENOENT') {
-        console.error('File deletion error:', error.message);
-      }
-    });
+    req.admin = admin;
+    next();
+  } catch (error) {
+    next(error);
   }
 }
 
-function subscriptionFor(userId) {
-  return db.prepare(`
+function saveSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.save(error => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate(error => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function destroySession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.destroy(error => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// Storage helpers.
+function fileObjectPath(folder, originalName) {
+  const ext = path.extname(originalName || '').toLowerCase();
+
+  return `${folder}/${crypto.randomBytes(18).toString('hex')}${ext}`;
+}
+
+async function uploadToBucket(file, folder) {
+  if (!file) return null;
+
+  const objectPath = fileObjectPath(folder, file.originalname);
+
+  const { error } = await supabase
+    .storage
+    .from(STORAGE_BUCKET)
+    .upload(objectPath, file.buffer, {
+      contentType: file.mimetype || 'application/octet-stream',
+      cacheControl: '3600',
+      upsert: false
+    });
+
+  if (error) throw error;
+
+  return objectPath;
+}
+
+async function removeStorageObjects(paths) {
+  const cleanPaths = (paths || []).filter(Boolean);
+
+  if (!cleanPaths.length) return;
+
+  const { error } = await supabase
+    .storage
+    .from(STORAGE_BUCKET)
+    .remove(cleanPaths);
+
+  if (error) {
+    console.error('Supabase Storage deletion error:', error.message);
+  }
+}
+
+async function downloadFromBucket(objectPath) {
+  const { data, error } = await supabase
+    .storage
+    .from(STORAGE_BUCKET)
+    .download(objectPath);
+
+  if (error || !data) {
+    throw error || new Error('File not found in storage.');
+  }
+
+  return Buffer.from(await data.arrayBuffer());
+}
+
+async function signedCoverUrl(objectPath) {
+  if (!objectPath) return null;
+
+  const { data, error } = await supabase
+    .storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrl(objectPath, 60 * 60);
+
+  if (error) {
+    console.error('Could not create cover URL:', error.message);
+    return null;
+  }
+
+  return data.signedUrl;
+}
+
+// Reading access helpers.
+async function subscriptionFor(userId) {
+  const result = await pool.query(`
     SELECT expires_at
     FROM subscriptions
-    WHERE user_id=? AND expires_at>?
+    WHERE user_id=$1 AND expires_at>NOW()
     ORDER BY expires_at DESC
     LIMIT 1
-  `).get(userId, new Date().toISOString()) || null;
+  `, [userId]);
+
+  return result.rows[0] || null;
 }
 
-function readingStatus(userId) {
-  const count = db.prepare(
-    'SELECT COUNT(*) AS n FROM reads WHERE user_id=?'
-  ).get(userId).n;
+async function readingStatus(userId) {
+  const [readResult, subscription] = await Promise.all([
+    pool.query(
+      'SELECT COUNT(*)::int AS n FROM reads WHERE user_id=$1',
+      [userId]
+    ),
+    subscriptionFor(userId)
+  ]);
 
-  const subscription = subscriptionFor(userId);
+  const count = Number(readResult.rows[0].n || 0);
 
   return {
     booksRead: count,
@@ -333,67 +358,69 @@ function readingStatus(userId) {
   };
 }
 
-// Text extraction for TXT, Markdown and CSV.
-function readTextContent(filePath, originalName) {
-  const ext = path.extname(originalName || '').toLowerCase();
-
-  if (!['.txt', '.md', '.csv'].includes(ext)) {
-    return '';
-  }
-
-  try {
-    return fs.readFileSync(filePath, 'utf8').slice(0, 2_000_000);
-  } catch (error) {
-    console.error('Text extraction error:', error.message);
-    return '';
-  }
-}
-
-// Extract selectable text from PDFs using pdf-parse 1.1.4.
-async function extractManuscriptContent(filePath, originalName) {
+// Extract text from supported manuscript formats.
+async function extractManuscriptContent(buffer, originalName) {
   const ext = path.extname(originalName || '').toLowerCase();
 
   if (ext === '.pdf') {
-    const buffer = fs.readFileSync(filePath);
     const result = await pdfParse(buffer);
 
     return String(result.text || '').slice(0, 2_000_000);
   }
 
-  return readTextContent(filePath, originalName);
+  if (['.txt', '.md', '.csv'].includes(ext)) {
+    return buffer.toString('utf8').slice(0, 2_000_000);
+  }
+
+  return '';
 }
 
+// Create or update the administrator account.
 async function initializeAdmin() {
   const email = process.env.ADMIN_EMAIL.trim().toLowerCase();
+
   const passwordHash = await bcrypt.hash(
     process.env.ADMIN_PASSWORD,
     12
   );
 
-  const existing = db.prepare(
-    'SELECT id FROM users WHERE email=?'
-  ).get(email);
+  const existing = await pool.query(
+    'SELECT id FROM users WHERE email=$1',
+    [email]
+  );
 
-  if (existing) {
-    db.prepare(
-      'UPDATE users SET role=?,password_hash=? WHERE id=?'
-    ).run('admin', passwordHash, existing.id);
+  if (existing.rows[0]) {
+    await pool.query(
+      'UPDATE users SET role=$1,password_hash=$2 WHERE id=$3',
+      ['admin', passwordHash, existing.rows[0].id]
+    );
   } else {
-    db.prepare(`
-      INSERT INTO users(name,email,password_hash,role)
-      VALUES(?,?,?,?)
-    `).run(
-      process.env.ADMIN_NAME || 'MindSpring Administrator',
-      email,
-      passwordHash,
-      'admin'
+    await pool.query(
+      `INSERT INTO users(name,email,password_hash,role)
+       VALUES($1,$2,$3,$4)`,
+      [
+        process.env.ADMIN_NAME || 'MindSpring Administrator',
+        email,
+        passwordHash,
+        'admin'
+      ]
     );
   }
 }
 
 // Health and public configuration.
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'MindSpring Reads' });
+app.get('/api/health', async (req, res, next) => {
+  try {
+    await pool.query('SELECT 1');
+
+    res.json({
+      ok: true,
+      service: 'MindSpring Reads',
+      database: 'connected'
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get('/api/config', (req, res) => {
@@ -417,7 +444,7 @@ app.post('/api/auth/register', authLimiter, async (req, res, next) => {
       });
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!isValidEmail(email)) {
       return res.status(400).json({
         error: 'Enter a valid email address.'
       });
@@ -434,12 +461,14 @@ app.post('/api/auth/register', authLimiter, async (req, res, next) => {
     let result;
 
     try {
-      result = db.prepare(`
-        INSERT INTO users(name,email,password_hash)
-        VALUES(?,?,?)
-      `).run(name, email, hash);
+      result = await pool.query(
+        `INSERT INTO users(name,email,password_hash)
+         VALUES($1,$2,$3)
+         RETURNING id,name,email,role`,
+        [name, email, hash]
+      );
     } catch (error) {
-      if (String(error.message).includes('UNIQUE')) {
+      if (error.code === '23505') {
         return res.status(409).json({
           error: 'That email already has an account.'
         });
@@ -448,19 +477,13 @@ app.post('/api/auth/register', authLimiter, async (req, res, next) => {
       throw error;
     }
 
-    req.session.userId = Number(result.lastInsertRowid);
+    req.session.userId = result.rows[0].id;
 
-    req.session.save(error => {
-      if (error) return next(error);
+    await saveSession(req);
 
-      const user = db.prepare(
-        'SELECT id,name,email,role FROM users WHERE id=?'
-      ).get(req.session.userId);
-
-      res.status(201).json({
-        user: safeUser(user),
-        reading: readingStatus(user.id)
-      });
+    res.status(201).json({
+      user: safeUser(result.rows[0]),
+      reading: await readingStatus(result.rows[0].id)
     });
   } catch (error) {
     next(error);
@@ -473,9 +496,12 @@ app.post('/api/auth/login', authLimiter, async (req, res, next) => {
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
 
-    const user = db.prepare(
-      'SELECT * FROM users WHERE email=?'
-    ).get(email);
+    const result = await pool.query(
+      'SELECT * FROM users WHERE email=$1',
+      [email]
+    );
+
+    const user = result.rows[0];
 
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({
@@ -483,207 +509,273 @@ app.post('/api/auth/login', authLimiter, async (req, res, next) => {
       });
     }
 
-    req.session.regenerate(error => {
-      if (error) return next(error);
+    await regenerateSession(req);
 
-      req.session.userId = user.id;
+    req.session.userId = user.id;
 
-      req.session.save(saveError => {
-        if (saveError) return next(saveError);
+    await saveSession(req);
 
-        res.json({
-          user: safeUser(user),
-          reading: readingStatus(user.id)
-        });
-      });
+    res.json({
+      user: safeUser(user),
+      reading: await readingStatus(user.id)
     });
   } catch (error) {
     next(error);
   }
 });
 
-app.post('/api/auth/logout', (req, res, next) => {
-  req.session.destroy(error => {
-    if (error) return next(error);
+app.post('/api/auth/logout', async (req, res, next) => {
+  try {
+    await destroySession(req);
 
     res.clearCookie('msr.sid');
+
     res.json({ ok: true });
-  });
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.get('/api/auth/me', (req, res) => {
-  if (!req.session.userId) {
-    return res.json({ user: null, reading: null });
+app.get('/api/auth/me', async (req, res, next) => {
+  try {
+    if (!req.session.userId) {
+      return res.json({
+        user: null,
+        reading: null
+      });
+    }
+
+    const result = await pool.query(
+      'SELECT id,name,email,role FROM users WHERE id=$1',
+      [req.session.userId]
+    );
+
+    const user = result.rows[0];
+
+    if (!user) {
+      return res.json({
+        user: null,
+        reading: null
+      });
+    }
+
+    res.json({
+      user: safeUser(user),
+      reading: await readingStatus(user.id)
+    });
+  } catch (error) {
+    next(error);
   }
-
-  const user = db.prepare(
-    'SELECT id,name,email,role FROM users WHERE id=?'
-  ).get(req.session.userId);
-
-  if (!user) {
-    return res.json({ user: null, reading: null });
-  }
-
-  res.json({
-    user: safeUser(user),
-    reading: readingStatus(user.id)
-  });
 });
 
-// Public catalogue.
-app.get('/api/books', (req, res) => {
-  const books = db.prepare(`
-    SELECT id,title,author,category,description,cover_path,created_at
-    FROM books
-    WHERE published=1
-    ORDER BY id DESC
-  `).all();
+// Public book catalogue.
+app.get('/api/books', async (req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT id,title,author,category,description,cover_path,created_at
+      FROM books
+      WHERE published=TRUE
+      ORDER BY id DESC
+    `);
 
-  res.json({
-    books: books.map(book => ({
-      ...book,
-      coverUrl: book.cover_path
-        ? '/covers/' + path.basename(book.cover_path)
-        : null
-    }))
-  });
+    const books = await Promise.all(
+      result.rows.map(async book => ({
+        ...book,
+        id: Number(book.id),
+        coverUrl: await signedCoverUrl(book.cover_path)
+      }))
+    );
+
+    res.json({ books });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Read a book.
-app.get('/api/books/:id/read', requireUser, (req, res) => {
-  const id = Number(req.params.id);
+app.get('/api/books/:id/read', requireUser, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
 
-  if (!Number.isSafeInteger(id) || id < 1) {
-    return res.status(400).json({ error: 'Invalid book ID.' });
-  }
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({
+        error: 'Invalid book ID.'
+      });
+    }
 
-  const book = db.prepare(`
-    SELECT id,title,author,category,description,content
-    FROM books
-    WHERE id=? AND published=1
-  `).get(id);
+    const result = await pool.query(`
+      SELECT id,title,author,category,description,content
+      FROM books
+      WHERE id=$1 AND published=TRUE
+    `, [id]);
 
-  if (!book) {
-    return res.status(404).json({ error: 'Book not found.' });
-  }
+    const book = result.rows[0];
 
-  const alreadyRead = db.prepare(
-    'SELECT 1 FROM reads WHERE user_id=? AND book_id=?'
-  ).get(req.session.userId, id);
+    if (!book) {
+      return res.status(404).json({
+        error: 'Book not found.'
+      });
+    }
 
-  const status = readingStatus(req.session.userId);
+    const alreadyReadResult = await pool.query(
+      'SELECT 1 FROM reads WHERE user_id=$1 AND book_id=$2',
+      [req.session.userId, id]
+    );
 
-  if (!alreadyRead && !status.hasAccess && status.booksRead >= 2) {
-    return res.status(402).json({
-      error: 'You have used your two free books. One-year access costs KSh 100.',
-      reading: status
+    const alreadyRead = Boolean(alreadyReadResult.rows[0]);
+    const status = await readingStatus(req.session.userId);
+
+    if (!alreadyRead && !status.hasAccess && status.booksRead >= 2) {
+      return res.status(402).json({
+        error: 'You have used your two free books. One-year access costs KSh 100.',
+        reading: status
+      });
+    }
+
+    if (!alreadyRead) {
+      await pool.query(
+        `INSERT INTO reads(user_id,book_id)
+         VALUES($1,$2)
+         ON CONFLICT(user_id,book_id) DO NOTHING`,
+        [req.session.userId, id]
+      );
+    }
+
+    res.json({
+      book: {
+        ...book,
+        id: Number(book.id)
+      },
+      reading: await readingStatus(req.session.userId)
     });
+  } catch (error) {
+    next(error);
   }
-
-  if (!alreadyRead) {
-    db.prepare(
-      'INSERT INTO reads(user_id,book_id) VALUES(?,?)'
-    ).run(req.session.userId, id);
-  }
-
-  res.json({
-    book,
-    reading: readingStatus(req.session.userId)
-  });
 });
 
-// Download an original manuscript.
-app.get('/api/books/:id/download', requireUser, (req, res) => {
-  const id = Number(req.params.id);
+// Download original manuscript.
+app.get('/api/books/:id/download', requireUser, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
 
-  const book = db.prepare(`
-    SELECT title,manuscript_path
-    FROM books
-    WHERE id=? AND published=1
-  `).get(id);
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({
+        error: 'Invalid book ID.'
+      });
+    }
 
-  if (!book || !book.manuscript_path ||
-      !fs.existsSync(book.manuscript_path)) {
-    return res.status(404).json({
-      error: 'Original manuscript download is not available.'
-    });
+    const result = await pool.query(
+      `SELECT title,manuscript_path
+       FROM books
+       WHERE id=$1 AND published=TRUE`,
+      [id]
+    );
+
+    const book = result.rows[0];
+
+    if (!book || !book.manuscript_path) {
+      return res.status(404).json({
+        error: 'Original manuscript download is not available.'
+      });
+    }
+
+    const [status, readResult] = await Promise.all([
+      readingStatus(req.session.userId),
+      pool.query(
+        'SELECT 1 FROM reads WHERE user_id=$1 AND book_id=$2',
+        [req.session.userId, id]
+      )
+    ]);
+
+    if (!readResult.rows[0] && !status.hasAccess && status.booksRead >= 2) {
+      return res.status(402).json({
+        error: 'Reading access is required to download this book.'
+      });
+    }
+
+    const buffer = await downloadFromBucket(book.manuscript_path);
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${path.basename(book.manuscript_path)}"`
+    );
+
+    res.send(buffer);
+  } catch (error) {
+    next(error);
   }
-
-  const status = readingStatus(req.session.userId);
-
-  const alreadyRead = db.prepare(
-    'SELECT 1 FROM reads WHERE user_id=? AND book_id=?'
-  ).get(req.session.userId, id);
-
-  if (!alreadyRead && !status.hasAccess && status.booksRead >= 2) {
-    return res.status(402).json({
-      error: 'Reading access is required to download this book.'
-    });
-  }
-
-  res.download(
-    book.manuscript_path,
-    path.basename(book.manuscript_path)
-  );
 });
 
 // Submit manual M-Pesa payment.
-app.post('/api/payments', requireUser, paymentLimiter, (req, res, next) => {
-  const payerName = String(req.body.payerName || '').trim();
-  const code = String(req.body.transactionCode || '')
-    .trim()
-    .toUpperCase();
-
-  if (
-    payerName.length < 2 ||
-    payerName.length > 100 ||
-    !/^[A-Z0-9]{6,20}$/.test(code)
-  ) {
-    return res.status(400).json({
-      error: 'Enter the payer name and valid M-Pesa transaction code.'
-    });
-  }
-
-  if (subscriptionFor(req.session.userId)) {
-    return res.status(409).json({
-      error: 'Your reading access is already active.'
-    });
-  }
-
+app.post('/api/payments', requireUser, paymentLimiter, async (req, res, next) => {
   try {
-    db.prepare(`
-      INSERT INTO payments(user_id,amount_kes,transaction_code,payer_name)
-      VALUES(?,?,?,?)
-    `).run(
-      req.session.userId,
-      Number(process.env.ACCESS_PRICE_KES || 100),
-      code,
-      payerName
-    );
+    const payerName = String(req.body.payerName || '').trim();
+
+    const code = String(req.body.transactionCode || '')
+      .trim()
+      .toUpperCase();
+
+    if (
+      payerName.length < 2 ||
+      payerName.length > 100 ||
+      !/^[A-Z0-9]{6,20}$/.test(code)
+    ) {
+      return res.status(400).json({
+        error: 'Enter the payer name and valid M-Pesa transaction code.'
+      });
+    }
+
+    if (await subscriptionFor(req.session.userId)) {
+      return res.status(409).json({
+        error: 'Your reading access is already active.'
+      });
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO payments(user_id,amount_kes,transaction_code,payer_name)
+         VALUES($1,$2,$3,$4)`,
+        [
+          req.session.userId,
+          Number(process.env.ACCESS_PRICE_KES || 100),
+          code,
+          payerName
+        ]
+      );
+    } catch (error) {
+      if (error.code === '23505') {
+        return res.status(409).json({
+          error: 'This transaction code was already submitted.'
+        });
+      }
+
+      throw error;
+    }
 
     res.status(201).json({
       message: 'Payment submitted for administrator verification.'
     });
   } catch (error) {
-    if (String(error.message).includes('UNIQUE')) {
-      return res.status(409).json({
-        error: 'This transaction code was already submitted.'
-      });
-    }
-
     next(error);
   }
 });
 
-app.get('/api/payments/mine', requireUser, (req, res) => {
-  res.json({
-    payments: db.prepare(`
+app.get('/api/payments/mine', requireUser, async (req, res, next) => {
+  try {
+    const result = await pool.query(`
       SELECT amount_kes,transaction_code,status,submitted_at,reviewed_at,admin_note
       FROM payments
-      WHERE user_id=?
+      WHERE user_id=$1
       ORDER BY id DESC
-    `).all(req.session.userId)
-  });
+    `, [req.session.userId]);
+
+    res.json({
+      payments: result.rows
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Author manuscript submission.
@@ -691,55 +783,60 @@ app.post(
   '/api/authors/submissions',
   requireUser,
   upload.single('manuscript'),
-  (req, res, next) => {
-    const authorName = String(req.body.authorName || '').trim();
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const title = String(req.body.title || '').trim();
-    const category = String(req.body.category || 'Other');
-    const description = String(req.body.description || '').trim();
-
-    if (!req.file) {
-      return res.status(400).json({
-        error: 'Choose a manuscript file. Maximum size is 20 MB.'
-      });
-    }
-
-    if (
-      authorName.length < 2 ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-      title.length < 2 ||
-      title.length > 180 ||
-      description.length < 10 ||
-      description.length > 2000 ||
-      !categories.includes(category)
-    ) {
-      removeFile(req.file.path);
-
-      return res.status(400).json({
-        error: 'Check the author name, email, title, category and description.'
-      });
-    }
+  async (req, res, next) => {
+    let storedPath = null;
 
     try {
-      db.prepare(`
+      const authorName = String(req.body.authorName || '').trim();
+      const email = String(req.body.email || '').trim().toLowerCase();
+      const title = String(req.body.title || '').trim();
+      const category = String(req.body.category || 'Other');
+      const description = String(req.body.description || '').trim();
+
+      if (!req.file) {
+        return res.status(400).json({
+          error: 'Choose a manuscript file. Maximum size is 20 MB.'
+        });
+      }
+
+      if (
+        authorName.length < 2 ||
+        !isValidEmail(email) ||
+        title.length < 2 ||
+        title.length > 180 ||
+        description.length < 10 ||
+        description.length > 2000 ||
+        !categories.includes(category)
+      ) {
+        return res.status(400).json({
+          error: 'Check the author name, email, title, category and description.'
+        });
+      }
+
+      storedPath = await uploadToBucket(req.file, 'manuscripts');
+
+      await pool.query(`
         INSERT INTO author_submissions
-        (user_id,author_name,email,title,category,description,manuscript_path)
-        VALUES(?,?,?,?,?,?,?)
-      `).run(
+          (user_id,author_name,email,title,category,description,manuscript_path)
+        VALUES($1,$2,$3,$4,$5,$6,$7)
+      `, [
         req.session.userId,
         authorName,
         email,
         title,
         category,
         description,
-        req.file.path
-      );
+        storedPath
+      ]);
 
       res.status(201).json({
         message: 'Your manuscript was submitted for administrator review.'
       });
     } catch (error) {
-      removeFile(req.file.path);
+      if (storedPath) {
+        await removeStorageObjects([storedPath]);
+      }
+
       next(error);
     }
   }
@@ -748,51 +845,49 @@ app.post(
 // All admin endpoints require administrator access.
 app.use('/api/admin', requireAdmin);
 
-app.get('/api/admin/summary', (req, res) => {
-  res.json({
-    users: db.prepare(
-      "SELECT COUNT(*) AS n FROM users WHERE role='reader'"
-    ).get().n,
+// Admin dashboard summary.
+app.get('/api/admin/summary', async (req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM users WHERE role='reader') AS users,
+        (SELECT COUNT(*)::int FROM books WHERE published=TRUE) AS books,
+        (SELECT COUNT(*)::int FROM payments WHERE status='pending') AS "pendingPayments",
+        (SELECT COUNT(*)::int FROM author_submissions WHERE status='pending') AS "pendingAuthors"
+    `);
 
-    books: db.prepare(
-      'SELECT COUNT(*) AS n FROM books WHERE published=1'
-    ).get().n,
-
-    pendingPayments: db.prepare(
-      "SELECT COUNT(*) AS n FROM payments WHERE status='pending'"
-    ).get().n,
-
-    pendingAuthors: db.prepare(
-      "SELECT COUNT(*) AS n FROM author_submissions WHERE status='pending'"
-    ).get().n
-  });
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Admin book listing.
-app.get('/api/admin/books', (req, res) => {
-  const books = db.prepare(`
-    SELECT id,title,author,category,description,published,
-           cover_path,manuscript_path,created_at
-    FROM books
-    ORDER BY id DESC
-  `).all();
+app.get('/api/admin/books', async (req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT id,title,author,category,description,published,
+             cover_path,manuscript_path,created_at
+      FROM books
+      ORDER BY id DESC
+    `);
 
-  res.json({
-    books: books.map(book => ({
-      ...book,
-      coverUrl: book.cover_path
-        ? '/covers/' + path.basename(book.cover_path)
-        : null,
+    const books = await Promise.all(
+      result.rows.map(async book => ({
+        ...book,
+        id: Number(book.id),
+        coverUrl: await signedCoverUrl(book.cover_path),
+        hasManuscript: Boolean(book.manuscript_path)
+      }))
+    );
 
-      hasManuscript: Boolean(
-        book.manuscript_path &&
-        fs.existsSync(book.manuscript_path)
-      )
-    }))
-  });
+    res.json({ books });
+  } catch (error) {
+    next(error);
+  }
 });
 
-// Admin publishing with PDF extraction.
+// Admin publishes a book.
 app.post(
   '/api/admin/books',
   upload.fields([
@@ -800,37 +895,35 @@ app.post(
     { name: 'manuscript', maxCount: 1 }
   ]),
   async (req, res, next) => {
-    const title = String(req.body.title || '').trim();
-    const author = String(req.body.author || '').trim();
-    const category = String(req.body.category || 'Other');
-    const description = String(req.body.description || '').trim();
-
-    const manuscript = req.files?.manuscript?.[0];
-    const cover = req.files?.cover?.[0];
-
-    if (
-      title.length < 2 ||
-      title.length > 180 ||
-      author.length < 2 ||
-      author.length > 180 ||
-      !categories.includes(category) ||
-      description.length < 10 ||
-      description.length > 2000 ||
-      !manuscript
-    ) {
-      removeFile(manuscript?.path);
-      removeFile(cover?.path);
-
-      return res.status(400).json({
-        error: 'Enter a valid title, author, category, description and manuscript.'
-      });
-    }
-
-    let content;
+    let manuscriptPath = null;
+    let coverPath = null;
 
     try {
-      content = await extractManuscriptContent(
-        manuscript.path,
+      const title = String(req.body.title || '').trim();
+      const author = String(req.body.author || '').trim();
+      const category = String(req.body.category || 'Other');
+      const description = String(req.body.description || '').trim();
+
+      const manuscript = req.files?.manuscript?.[0];
+      const cover = req.files?.cover?.[0];
+
+      if (
+        title.length < 2 ||
+        title.length > 180 ||
+        author.length < 2 ||
+        author.length > 180 ||
+        !categories.includes(category) ||
+        description.length < 10 ||
+        description.length > 2000 ||
+        !manuscript
+      ) {
+        return res.status(400).json({
+          error: 'Enter a valid title, author, category, description and manuscript.'
+        });
+      }
+
+      const content = await extractManuscriptContent(
+        manuscript.buffer,
         manuscript.originalname
       );
 
@@ -838,75 +931,98 @@ app.post(
         path.extname(manuscript.originalname).toLowerCase() === '.pdf' &&
         !content.trim()
       ) {
-        removeFile(manuscript.path);
-        removeFile(cover?.path);
-
         return res.status(400).json({
           error: 'No selectable text was found in this PDF. A scanned PDF may require OCR.'
         });
       }
-    } catch (error) {
-      console.error('Manuscript extraction failed:', error);
 
-      removeFile(manuscript.path);
-      removeFile(cover?.path);
+      manuscriptPath = await uploadToBucket(manuscript, 'manuscripts');
 
-      return res.status(400).json({
-        error: 'Could not read this manuscript. Check the file and try again.'
-      });
-    }
+      if (cover) {
+        coverPath = await uploadToBucket(cover, 'covers');
+      }
 
-    try {
-      const result = db.prepare(`
+      const result = await pool.query(`
         INSERT INTO books
-        (title,author,category,description,content,cover_path,manuscript_path,published)
-        VALUES(?,?,?,?,?,?,?,1)
-      `).run(
+          (title,author,category,description,content,cover_path,manuscript_path,published)
+        VALUES($1,$2,$3,$4,$5,$6,$7,TRUE)
+        RETURNING id
+      `, [
         title,
         author,
         category,
         description,
         content,
-        cover?.path || null,
-        manuscript.path
-      );
+        coverPath,
+        manuscriptPath
+      ]);
 
       res.status(201).json({
         message: 'Book published successfully.',
-        id: Number(result.lastInsertRowid)
+        id: Number(result.rows[0].id)
       });
     } catch (error) {
-      removeFile(manuscript.path);
-      removeFile(cover?.path);
+      await removeStorageObjects([manuscriptPath, coverPath]);
       next(error);
     }
   }
 );
 
-// Delete book and associated files.
-app.delete('/api/admin/books/:id', (req, res, next) => {
-  const id = Number(req.params.id);
-
-  if (!Number.isSafeInteger(id) || id < 1) {
-    return res.status(400).json({ error: 'Invalid book ID.' });
-  }
-
-  const book = db.prepare(
-    'SELECT id,cover_path,manuscript_path FROM books WHERE id=?'
-  ).get(id);
-
-  if (!book) {
-    return res.status(404).json({ error: 'Book not found.' });
-  }
-
+// Delete a book and its files.
+app.delete('/api/admin/books/:id', async (req, res, next) => {
   try {
-    db.transaction(() => {
-      db.prepare('DELETE FROM reads WHERE book_id=?').run(id);
-      db.prepare('DELETE FROM books WHERE id=?').run(id);
-    })();
+    const id = Number(req.params.id);
 
-    removeFile(book.cover_path);
-    removeFile(book.manuscript_path);
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({
+        error: 'Invalid book ID.'
+      });
+    }
+
+    const client = await pool.connect();
+    let book;
+
+    try {
+      await client.query('BEGIN');
+
+      const found = await client.query(
+        `SELECT id,cover_path,manuscript_path
+         FROM books WHERE id=$1 FOR UPDATE`,
+        [id]
+      );
+
+      book = found.rows[0];
+
+      if (!book) {
+        await client.query('ROLLBACK');
+
+        return res.status(404).json({
+          error: 'Book not found.'
+        });
+      }
+
+      await client.query(
+        'DELETE FROM reads WHERE book_id=$1',
+        [id]
+      );
+
+      await client.query(
+        'DELETE FROM books WHERE id=$1',
+        [id]
+      );
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    await removeStorageObjects([
+      book.cover_path,
+      book.manuscript_path
+    ]);
 
     res.json({
       message: 'Book and its uploaded files were deleted.'
@@ -917,86 +1033,129 @@ app.delete('/api/admin/books/:id', (req, res, next) => {
 });
 
 // Download author manuscript for admin review.
-app.get('/api/admin/authors/:id/download', (req, res) => {
-  const submission = db.prepare(`
-    SELECT manuscript_path
-    FROM author_submissions
-    WHERE id=?
-  `).get(Number(req.params.id));
+app.get('/api/admin/authors/:id/download', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
 
-  if (!submission ||
-      !submission.manuscript_path ||
-      !fs.existsSync(submission.manuscript_path)) {
-    return res.status(404).json({
-      error: 'Manuscript file not found.'
-    });
-  }
-
-  res.download(
-    submission.manuscript_path,
-    path.basename(submission.manuscript_path)
-  );
-});
-
-// List author submissions.
-app.get('/api/admin/authors', (req, res) => {
-  res.json({
-    submissions: db.prepare(`
-      SELECT id,author_name,email,title,category,description,status,submitted_at
-      FROM author_submissions
-      ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END,id DESC
-    `).all()
-  });
-});
-
-// Review author submission. PDF extraction happens BEFORE the transaction.
-app.post('/api/admin/authors/:id/review', async (req, res, next) => {
-  const id = Number(req.params.id);
-  const decision = String(req.body.decision || '');
-
-  if (
-    !Number.isSafeInteger(id) ||
-    id < 1 ||
-    !['approve', 'reject'].includes(decision)
-  ) {
-    return res.status(400).json({
-      error: 'Invalid review request.'
-    });
-  }
-
-  const submission = db.prepare(
-    'SELECT * FROM author_submissions WHERE id=?'
-  ).get(id);
-
-  if (!submission) {
-    return res.status(404).json({
-      error: 'Submission not found.'
-    });
-  }
-
-  if (submission.status !== 'pending') {
-    return res.status(409).json({
-      error: 'This submission has already been reviewed.'
-    });
-  }
-
-  let content = '';
-
-  if (decision === 'approve') {
-    if (
-      !submission.manuscript_path ||
-      !fs.existsSync(submission.manuscript_path)
-    ) {
-      return res.status(404).json({
-        error: 'The submitted manuscript file is missing.'
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({
+        error: 'Invalid submission ID.'
       });
     }
 
-    try {
-      content = await extractManuscriptContent(
-        submission.manuscript_path,
-        submission.manuscript_path
-      );
+    const result = await pool.query(
+      'SELECT manuscript_path FROM author_submissions WHERE id=$1',
+      [id]
+    );
+
+    const submission = result.rows[0];
+
+    if (!submission?.manuscript_path) {
+      return res.status(404).json({
+        error: 'Manuscript file not found.'
+      });
+    }
+
+    const buffer = await downloadFromBucket(submission.manuscript_path);
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${path.basename(submission.manuscript_path)}"`
+    );
+
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// List author submissions.
+app.get('/api/admin/authors', async (req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT id,author_name,email,title,category,description,status,submitted_at
+      FROM author_submissions
+      ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END,id DESC
+    `);
+
+    res.json({
+      submissions: result.rows.map(row => ({
+        ...row,
+        id: Number(row.id)
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Review author submission.
+app.post('/api/admin/authors/:id/review', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const decision = String(req.body.decision || '');
+
+    if (
+      !Number.isSafeInteger(id) ||
+      id < 1 ||
+      !['approve', 'reject'].includes(decision)
+    ) {
+      return res.status(400).json({
+        error: 'Invalid review request.'
+      });
+    }
+
+    const found = await pool.query(
+      'SELECT * FROM author_submissions WHERE id=$1',
+      [id]
+    );
+
+    const submission = found.rows[0];
+
+    if (!submission) {
+      return res.status(404).json({
+        error: 'Submission not found.'
+      });
+    }
+
+    if (submission.status !== 'pending') {
+      return res.status(409).json({
+        error: 'This submission has already been reviewed.'
+      });
+    }
+
+    if (decision === 'approve') {
+      if (!submission.manuscript_path) {
+        return res.status(404).json({
+          error: 'The submitted manuscript file is missing.'
+        });
+      }
+
+      let fileBuffer;
+
+      try {
+        fileBuffer = await downloadFromBucket(submission.manuscript_path);
+      } catch (error) {
+        return res.status(404).json({
+          error: 'The submitted manuscript file is missing.'
+        });
+      }
+
+      let content;
+
+      try {
+        content = await extractManuscriptContent(
+          fileBuffer,
+          submission.manuscript_path
+        );
+      } catch (error) {
+        console.error('Author manuscript extraction failed:', error.message);
+
+        return res.status(400).json({
+          error: 'Could not extract manuscript text. Check the uploaded file.'
+        });
+      }
 
       if (
         path.extname(submission.manuscript_path).toLowerCase() === '.pdf' &&
@@ -1006,42 +1165,67 @@ app.post('/api/admin/authors/:id/review', async (req, res, next) => {
           error: 'No selectable text was found in this PDF. OCR may be required.'
         });
       }
-    } catch (error) {
-      console.error('Author PDF extraction failed:', error);
 
-      return res.status(400).json({
-        error: 'Could not extract manuscript text. Check the uploaded file.'
-      });
-    }
-  }
+      const client = await pool.connect();
 
-  try {
-    db.transaction(() => {
-      if (decision === 'approve') {
-        db.prepare(`
+      try {
+        await client.query('BEGIN');
+
+        const locked = await client.query(
+          'SELECT status FROM author_submissions WHERE id=$1 FOR UPDATE',
+          [id]
+        );
+
+        if (!locked.rows[0] || locked.rows[0].status !== 'pending') {
+          throw new Error('This submission has already been reviewed.');
+        }
+
+        await client.query(`
           INSERT INTO books
-          (title,author,category,description,content,manuscript_path,published)
-          VALUES(?,?,?,?,?,?,1)
-        `).run(
+            (title,author,category,description,content,manuscript_path,published)
+          VALUES($1,$2,$3,$4,$5,$6,TRUE)
+        `, [
           submission.title,
           submission.author_name,
           submission.category,
           submission.description,
           content,
           submission.manuscript_path
-        );
-      }
+        ]);
 
-      db.prepare(`
+        await client.query(`
+          UPDATE author_submissions
+          SET status='approved',reviewed_at=NOW(),reviewed_by=$1
+          WHERE id=$2
+        `, [req.admin.id, id]);
+
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+
+        if (error.message.includes('already been reviewed')) {
+          return res.status(409).json({
+            error: error.message
+          });
+        }
+
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else {
+      const updated = await pool.query(`
         UPDATE author_submissions
-        SET status=?,reviewed_at=CURRENT_TIMESTAMP,reviewed_by=?
-        WHERE id=? AND status='pending'
-      `).run(
-        decision === 'approve' ? 'approved' : 'rejected',
-        req.admin.id,
-        id
-      );
-    })();
+        SET status='rejected',reviewed_at=NOW(),reviewed_by=$1
+        WHERE id=$2 AND status='pending'
+      `, [req.admin.id, id]);
+
+      if (updated.rowCount !== 1) {
+        return res.status(409).json({
+          error: 'This submission has already been reviewed.'
+        });
+      }
+    }
 
     res.json({
       message: decision === 'approve'
@@ -1054,21 +1238,30 @@ app.post('/api/admin/authors/:id/review', async (req, res, next) => {
 });
 
 // Admin payment listing.
-app.get('/api/admin/payments', (req, res) => {
-  res.json({
-    payments: db.prepare(`
+app.get('/api/admin/payments', async (req, res, next) => {
+  try {
+    const result = await pool.query(`
       SELECT p.id,p.amount_kes,p.transaction_code,p.payer_name,
-             p.status,p.submitted_at,u.name AS reader_name,
-             u.email AS reader_email
+             p.status,p.submitted_at,
+             u.name AS reader_name,u.email AS reader_email
       FROM payments p
       JOIN users u ON u.id=p.user_id
       ORDER BY CASE p.status WHEN 'pending' THEN 0 ELSE 1 END,p.id DESC
-    `).all()
-  });
+    `);
+
+    res.json({
+      payments: result.rows.map(row => ({
+        ...row,
+        id: Number(row.id)
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
-// Approve or reject a manual payment.
-app.post('/api/admin/payments/:id/review', (req, res, next) => {
+// Approve or reject manual M-Pesa payment.
+app.post('/api/admin/payments/:id/review', async (req, res, next) => {
   const id = Number(req.params.id);
   const decision = String(req.body.decision || '');
   const note = String(req.body.note || '').trim().slice(0, 500);
@@ -1083,69 +1276,78 @@ app.post('/api/admin/payments/:id/review', (req, res, next) => {
     });
   }
 
-  const payment = db.prepare(
-    'SELECT * FROM payments WHERE id=?'
-  ).get(id);
-
-  if (!payment) {
-    return res.status(404).json({
-      error: 'Payment not found.'
-    });
-  }
-
-  if (payment.status !== 'pending') {
-    return res.status(409).json({
-      error: 'Payment already reviewed.'
-    });
-  }
+  const client = await pool.connect();
 
   try {
-    db.transaction(() => {
-      const updated = db.prepare(`
-        UPDATE payments
-        SET status=?,reviewed_at=CURRENT_TIMESTAMP,reviewed_by=?,admin_note=?
-        WHERE id=? AND status='pending'
-      `).run(
-        decision === 'approve' ? 'approved' : 'rejected',
-        req.admin.id,
-        note,
-        id
+    await client.query('BEGIN');
+
+    const found = await client.query(
+      'SELECT * FROM payments WHERE id=$1 FOR UPDATE',
+      [id]
+    );
+
+    const payment = found.rows[0];
+
+    if (!payment) {
+      await client.query('ROLLBACK');
+
+      return res.status(404).json({
+        error: 'Payment not found.'
+      });
+    }
+
+    if (payment.status !== 'pending') {
+      await client.query('ROLLBACK');
+
+      return res.status(409).json({
+        error: 'Payment already reviewed.'
+      });
+    }
+
+    await client.query(`
+      UPDATE payments
+      SET status=$1,reviewed_at=NOW(),reviewed_by=$2,admin_note=$3
+      WHERE id=$4
+    `, [
+      decision === 'approve' ? 'approved' : 'rejected',
+      req.admin.id,
+      note,
+      id
+    ]);
+
+    if (decision === 'approve') {
+      const active = await client.query(`
+        SELECT expires_at
+        FROM subscriptions
+        WHERE user_id=$1 AND expires_at>NOW()
+        ORDER BY expires_at DESC
+        LIMIT 1
+      `, [payment.user_id]);
+
+      const now = new Date();
+
+      const start = active.rows[0]
+        ? new Date(active.rows[0].expires_at)
+        : now;
+
+      const end = new Date(
+        start.getTime() +
+        Number(process.env.ACCESS_DURATION_DAYS || 365) * 86400000
       );
 
-      if (updated.changes !== 1) {
-        throw new Error('Payment was already reviewed.');
-      }
-
-      if (decision === 'approve') {
-        const now = new Date();
-
-        const active = db.prepare(`
-          SELECT expires_at FROM subscriptions
-          WHERE user_id=? AND expires_at>?
-          ORDER BY expires_at DESC
-          LIMIT 1
-        `).get(payment.user_id, now.toISOString());
-
-        const start = active
-          ? new Date(active.expires_at)
-          : now;
-
-        const end = new Date(
-          start.getTime() +
-          Number(process.env.ACCESS_DURATION_DAYS || 365) * 86400000
-        );
-
-        db.prepare(`
-          INSERT INTO subscriptions(user_id,starts_at,expires_at,payment_id)
-          VALUES(?,?,?,?)
-        `).run(
+      await client.query(
+        `INSERT INTO subscriptions(user_id,starts_at,expires_at,payment_id)
+         VALUES($1,$2,$3,$4)`,
+        [
           payment.user_id,
           start.toISOString(),
           end.toISOString(),
           id
-        );
-      }
-    })();
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
 
     res.json({
       message: decision === 'approve'
@@ -1153,16 +1355,14 @@ app.post('/api/admin/payments/:id/review', (req, res, next) => {
         : 'Payment rejected.'
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     next(error);
+  } finally {
+    client.release();
   }
 });
 
-// Static files.
-app.use('/covers', express.static(COVER_DIR, {
-  dotfiles: 'deny',
-  index: false
-}));
-
+// Static website files.
 app.use(express.static(PUBLIC_DIR));
 
 app.get('/admin', (req, res) => {
@@ -1187,7 +1387,9 @@ app.get(/.*/, (req, res) => {
 app.use((error, req, res, next) => {
   console.error('Server error:', error);
 
-  if (res.headersSent) return next(error);
+  if (res.headersSent) {
+    return next(error);
+  }
 
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
@@ -1210,19 +1412,41 @@ app.use((error, req, res, next) => {
   }
 
   res.status(500).json({
-    error: 'Server error. Check the terminal for details.'
+    error: 'Server error. Check the Render logs for details.'
   });
 });
 
-initializeAdmin()
-  .then(() => {
+// Start server after verifying the database and Storage bucket.
+async function start() {
+  try {
+    await pool.query('SELECT 1');
+
+    const { error } = await supabase
+      .storage
+      .from(STORAGE_BUCKET)
+      .list('', { limit: 1 });
+
+    if (error) {
+      throw new Error(
+        `Supabase Storage bucket check failed (${STORAGE_BUCKET}): ${error.message}`
+      );
+    }
+
+    await initializeAdmin();
+
     app.listen(PORT, () => {
-      console.log(`MindSpring Reads running at http://localhost:${PORT}`);
-      console.log(`Database: ${DB_FILE}`);
-      console.log('Manuscript formats:', [...allowedManuscripts].join(', '));
+      console.log(`MindSpring Reads running on port ${PORT}`);
+      console.log('PostgreSQL: connected');
+      console.log(`Supabase Storage bucket: ${STORAGE_BUCKET} (connected)`);
+      console.log(
+        'Manuscript formats:',
+        [...allowedManuscripts].join(', ')
+      );
     });
-  })
-  .catch(error => {
-    console.error('Could not initialize administrator:', error);
+  } catch (error) {
+    console.error('Startup failed:', error.message);
     process.exit(1);
-  });
+  }
+}
+
+start();
